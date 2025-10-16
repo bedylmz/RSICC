@@ -22,6 +22,6 @@ if __name__ == '__main__':
                        captions_per_image=args.captions_per_image,
                        min_word_freq=args.min_word_freq,
                        output_folder=args.output_folder,
-                       max_len=args.output_folder)
+                       max_len=args.max_len)
 
     print('create_input_files END at: ', time.strftime("%m-%d  %H : %M : %S", time.localtime(time.time())))
