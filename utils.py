@@ -131,7 +131,7 @@ def create_input_files(dataset, karpathy_json_path, image_folder, captions_per_i
             h.attrs['captions_per_image'] = captions_per_image
 
             # Create dataset inside HDF5 file to store images
-            if dataset == 'LEVIR_CC':
+            if dataset =='LEVIR_CC' or dataset =='Second_CC_RGB':
                 images = h.create_dataset('images', (len(impaths), 2, 3, 256, 256), dtype='uint8')
             else:
                 images = h.create_dataset('images', (len(impaths), 3, 256, 256), dtype='uint8')
