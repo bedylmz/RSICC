@@ -48,7 +48,7 @@ def create_input_files(dataset, karpathy_json_path, image_folder, captions_per_i
     :param max_len: don't sample captions longer than this length
     """
 
-    assert dataset in {'RSICD','LEVIR_CC'}
+    assert dataset in {'RSICD', 'LEVIR_CC', 'Second_CC_RGB', 'Second_CC'}
 
     # Read Karpathy JSON
     with open(karpathy_json_path, 'r') as j:
@@ -82,6 +82,10 @@ def create_input_files(dataset, karpathy_json_path, image_folder, captions_per_i
             # FIXME:need to change for levir_CC
             path1 = os.path.join(image_folder, img['split'], 'A', img['filename'])
             path2 = os.path.join(image_folder, img['split'], 'B', img['filename'])
+            path = [path1,path2]
+        elif dataset == 'Second_CC_RGB':
+            path1 = os.path.join(image_folder, img['split'], 'rgb', 'A', img['filename'])
+            path2 = os.path.join(image_folder, img['split'], 'rgb', 'B', img['filename'])
             path = [path1,path2]
         else:
             path = os.path.join(image_folder, img['filename'])
