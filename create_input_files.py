@@ -4,7 +4,6 @@ import argparse
 
 if __name__ == '__main__':
 
-    print('create_input_files START at: ', time.strftime("%m-%d  %H : %M : %S", time.localtime(time.time())))
     parser = argparse.ArgumentParser(description = 'Create Input Files')
     parser.add_argument('--dataset', default = "LEVIR_CC")
     parser.add_argument('--karpathy_json_path', default = "./Levir_CC_dataset/LevirCCcaptions.json")
@@ -14,7 +13,8 @@ if __name__ == '__main__':
     parser.add_argument('--output_folder', default = './data')
     parser.add_argument('--max_len', type = int, default = 50)
     args = parser.parse_args()
-    
+
+    print('create_input_files START at: ', time.strftime("%m-%d  %H : %M : %S", time.localtime(time.time())))
 
     create_input_files(dataset=args.dataset,
                        karpathy_json_path=args.karpathy_json_path,
