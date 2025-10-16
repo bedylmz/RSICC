@@ -5,7 +5,6 @@ import torch.optim
 import torch.utils.data
 import torchvision.transforms as transforms
 from datasets import *
-from datetime import datetime
 from utils import *
 # from nltk.translate.bleu_score import corpus_bleu
 import torch.nn.functional as F
@@ -19,71 +18,9 @@ normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                              std=[0.229, 0.224, 0.225])
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-result = ""
-def visual_feat0(args, img_A_feat,img_B_feat):
-    img_A = imread(args.img_A)
-    img_B = imread(args.img_B)
-    dif_feat = numpy.absolute((img_B_feat[0,:1024,:,:] - img_A_feat[0,:1024,:,:]).mean(dim=0).cpu().numpy())
-    img_A_feat = img_A_feat[0,:1024,:,:].mean(dim=0).cpu().numpy()
-    img_B_feat = img_B_feat[0,:1024,:,:].mean(dim=0).cpu().numpy()
 
-    for i in range(1):
-        # print(i)
-        headmap_A = img_A_feat[:,:]
-        headmap_B = img_B_feat[:, :]
-
-
-        headmap_A = dif_feat
-        headmap_B = dif_feat
-
-        headmap_A /= np.max(headmap_A)  # (7,7)
-        headmap_B /= np.max(headmap_B)  # (7,7)
-
-        headmap_A = cv2.resize(headmap_A, (img_A.shape[1], img_A.shape[0]))
-        headmap_A = np.uint8(255 * headmap_A)
-        headmap_A = cv2.applyColorMap(255-headmap_A, cv2.COLORMAP_JET)
-        superimposed_img_A = headmap_A #* 0.2+ img_A * 0.8
-        cv2.imwrite('F:/LCY/change_caption/Change_Captioning_Transformer/feat_image/resnet/A/'+str(i) + '.png', superimposed_img_A)
-
-        headmap_B = cv2.resize(headmap_B, (img_A.shape[1], img_A.shape[0]))
-        headmap_B = np.uint8(255 * headmap_B)
-        headmap_B = cv2.applyColorMap(255-headmap_B, cv2.COLORMAP_JET)
-        superimposed_img_B = headmap_B #* 0.2 + img_B * 0.8
-        cv2.imwrite('F:/LCY/change_caption/Change_Captioning_Transformer/feat_image/resnet/B/' + str(i) + '.png', superimposed_img_B)
-
-
-def visual_feat(args, encoder_out):
-    img_A = imread(args.img_A)
-    img_B = imread(args.img_B)
-    dif_feat = numpy.absolute((encoder_out[:, 0, 512:,0].view(14,14,512) - encoder_out[:, 0, :512,0].view(14,14,512)).mean(dim=-1).cpu().numpy())
-    img_A_feat = encoder_out[:, 0, :512,0].view(14,14,512).mean(dim=-1).cpu().numpy()
-    img_B_feat = encoder_out[:, 0, 512:,0].view(14,14,512).mean(dim=-1).cpu().numpy()
-    for i in range(1):
-        # print(i)
-        headmap_A = img_A_feat[:,:]
-        headmap_B = img_B_feat[:, :]
-
-
-        headmap_A = dif_feat
-        headmap_B = dif_feat
-
-        headmap_A /= np.max(headmap_A)  # (7,7)
-        headmap_B /= np.max(headmap_B)  # (7,7)
-
-        headmap_A = cv2.resize(headmap_A, (img_A.shape[1], img_A.shape[0]))
-        headmap_A = np.uint8(255 * headmap_A)
-        headmap_A = cv2.applyColorMap(255-headmap_A, cv2.COLORMAP_JET)
-        superimposed_img_A = headmap_A #* 0.2+ img_A * 0.8
-        cv2.imwrite('F:/LCY/change_caption/Change_Captioning_Transformer/feat_image/RSICCformer/A/'+str(i) + '.png', superimposed_img_A)
-
-        headmap_B = cv2.resize(headmap_B, (img_A.shape[1], img_A.shape[0]))
-        headmap_B = np.uint8(255 * headmap_B)
-        headmap_B = cv2.applyColorMap(255-headmap_B, cv2.COLORMAP_JET)
-        superimposed_img_B = headmap_B #* 0.2 + img_B * 0.8
-        cv2.imwrite('F:/LCY/change_caption/Change_Captioning_Transformer/feat_image/RSICCformer/B/' + str(i) + '.png', superimposed_img_B)
 
 def save_captions(args, word_map, hypotheses):
-    global result
     result_json_file = {}
     reference_json_file = {}
     kkk = -1
@@ -100,9 +37,8 @@ def save_captions(args, word_map, hypotheses):
         result_json_file[str(kkk)].append(line_hypo)
 
         line_hypo += "\r\n"
-    result = result + str(result_json_file["0"]) + "\n"
-    print(result_json_file)
 
+    print(result_json_file)
     with open('eval_results/'+'/'+args.encoder_image + "_" +args.encoder_feat+"_" +args.decoder + '_res.json', 'w') as f:
         json.dump(result_json_file, f)
 
@@ -111,13 +47,8 @@ def save_captions(args, word_map, hypotheses):
 def get_key(dict_, value):
   return [k for k, v in dict_.items() if v == value]
 
-
-def evaluate_transformer(args,encoder_image,encoder_feat,decoder,imgA_path, imgB_path):
+def evaluate_transformer(args,encoder_image,encoder_feat,decoder):
     # Load model
-    global result
-    print("imgA_path "+imgA_path)
-    print("imgB_path " +imgB_path)
-    result = result + "imgA_path "+imgA_path+"\n"
     encoder_image = encoder_image.to(device)
     encoder_image.eval()
     encoder_feat = encoder_feat.to(device)
@@ -138,9 +69,7 @@ def evaluate_transformer(args,encoder_image,encoder_feat,decoder,imgA_path, imgB
     :param beam_size: beam size at which to generate captions for evaluation
     :return: BLEU-4 score
     """
-
-    beam_size = 5 # elle girdim
-    #beam_size = args.beam_size
+    beam_size = args.beam_size
     Caption_End = False
     # DataLoader
 
@@ -155,11 +84,11 @@ def evaluate_transformer(args,encoder_image,encoder_feat,decoder,imgA_path, imgB
         k = beam_size
 
         # Read image and process
-        img_A = imread(imgA_path)
+        img_A = imread(args.img_A)
         img_A = img_A.transpose(2, 0, 1)
         img_A = img_A / 255.
         img_A = torch.FloatTensor(img_A).to(device)
-        img_B = imread(imgB_path)
+        img_B = imread(args.img_B)
         img_B = img_B.transpose(2, 0, 1)
         img_B = img_B / 255.
         img_B = torch.FloatTensor(img_B).to(device)
@@ -174,14 +103,7 @@ def evaluate_transformer(args,encoder_image,encoder_feat,decoder,imgA_path, imgB
         # Encode
         imgs_A = encoder_image(img_A)
         imgs_B = encoder_image(img_B)  # encoder_image :[1, 1024,14,14]
-        # visual_feat0(args,imgs_A,imgs_B)
-
         encoder_out = encoder_feat(imgs_A, imgs_B) # encoder_out: (S, batch, feature_dim)
-
-        # 可视化
-        # visual_feat(args,encoder_out)
-
-
 
         tgt = torch.zeros(52, k).to(device).to(torch.int64)
         tgt_length = tgt.size(0)
@@ -290,9 +212,9 @@ def evaluate_transformer(args,encoder_image,encoder_feat,decoder,imgA_path, imgB
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Change_Captioning')
-    parser.add_argument('--img_A',  default='./Example/A/test_001203.png')
-    parser.add_argument('--img_B',  default='./Example/B/test_001203.png')
-    parser.add_argument('--data_folder', default="./new_train_datas/",help='folder with data files saved by create_input_files.py.')
+    parser.add_argument('--img_A',  default='./Example/A/train_000016.png')
+    parser.add_argument('--img_B',  default='./Example/B/train_000016.png')
+    parser.add_argument('--data_folder', default="./data/",help='folder with data files saved by create_input_files.py.')
     parser.add_argument('--data_name', default="Levir_CC_5_cap_per_img_5_min_word_freq",help='base name shared by data files.')
 
     parser.add_argument('--encoder_image', default="resnet101") # inception_v3 or vgg16 or vgg19 or resnet50 or resnet101 or resnet152
@@ -301,41 +223,25 @@ if __name__ == '__main__':
     parser.add_argument('--Split', default="TEST", help='which')
     parser.add_argument('--epoch', default="epoch", help='which')
     parser.add_argument('--beam_size', type=int, default=1, help='beam_size.')
-    parser.add_argument('--path', default="./bitirme/bitirme_checkpoint_first", help='model checkpoint.') #  ./models_checkpoint/data/2-times/RSICCformer_D/Simis_baseline/
-    #parser.add_argument('--img_B',  default='./Example/B/test_001230.png')
+    parser.add_argument('--path', default="./models_checkpoint/", help='model checkpoint.') #  ./models_checkpoint/data/2-times/RSICCformer_D/Simis_baseline/
     args = parser.parse_args()
 
 
     filename = os.listdir(args.path)
-    print(filename)
     for i in range(len(filename)):
-        if (args.epoch in filename[i]) or (args.encoder_feat not in filename[i]) or (args.decoder not in filename[i]) :
+        if (args.epoch in filename[i]) or (args.encoder_feat not in filename[i])or (args.decoder not in filename[i]) :
             continue
         print(time.strftime("%m-%d  %H : %M : %S", time.localtime(time.time())))
 
         checkpoint_path = os.path.join(args.path, filename[i])
         print(args.path + filename[i])
-        print(device)
+
         # Load model
         checkpoint = torch.load(checkpoint_path, map_location=str(device))
         encoder_image = checkpoint['encoder_image']
         encoder_feat = checkpoint['encoder_feat']
         decoder = checkpoint['decoder']
-        directory = "./Example3"  # Dizin yolu
-        file_names = os.listdir(directory+"/A")  # Dosya isimlerini listelemek için os.listdir() kullanılır
-        # Dosya yollarını oluşturmak için os.path.join() kullanılır
 
-        for filename in file_names:
-            evaluate_transformer(args, encoder_image, encoder_feat, decoder, imgA_path=directory+"/A/"+filename, imgB_path=directory+"/B/"+filename)
+        evaluate_transformer(args,encoder_image,encoder_feat,decoder)
 
-    print("-----------------------------------------")
-    print(result)
-    # Anlık tarihi al
-    now = datetime.now()
-    # Tarihi string olarak formatla
-    date_string = now.strftime("%Y-%m-%d %H_%M_%S")
-    file = open("./bitirme/bitirme_checkpoint/"+"caption results"+date_string+".txt", "w")
-    file.write(result)
-    file.close()
-
-
+        time.sleep(10)

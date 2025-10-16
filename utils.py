@@ -14,7 +14,7 @@ from eval_func.bleu.bleu import Bleu
 from eval_func.rouge.rouge import Rouge
 from eval_func.cider.cider import Cider
 from eval_func.meteor.meteor import Meteor
-from eval_func.spice.spice import Spice
+# from eval_func.spice.spice import Spice
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import numpy as np
@@ -80,8 +80,8 @@ def create_input_files(dataset, karpathy_json_path, image_folder, captions_per_i
             path = os.path.join(image_folder, img['filepath'], img['filename'])
         elif dataset == 'LEVIR_CC':
             # FIXME:need to change for levir_CC
-            path1 = os.path.join(image_folder, 'train', 'A', img['filename'])
-            path2 = os.path.join(image_folder, 'train', 'B', img['filename'])
+            path1 = os.path.join(image_folder, img['split'], 'A', img['filename'])
+            path2 = os.path.join(image_folder, img['split'], 'B', img['filename'])
             path = [path1,path2]
         else:
             path = os.path.join(image_folder, img['filename'])
@@ -297,164 +297,10 @@ def save_checkpoint(args,data_name, epoch, epochs_since_improvement, encoder_ima
         os.makedirs(path)
         # If this checkpoint is the best so far, store a copy so it doesn't get overwritten by a worse checkpoint
     if is_best:
-        torch.save(state, os.path.join(path, 'NEW_BEST_' + filename))
+        torch.save(state, os.path.join(path, 'BEST_' + filename))
 
     # torch.save(state, os.path.join(path, 'checkpoint_' + data_name +'_epoch_'+str(epoch) + '.pth.tar'))
 
-def save_checkpoint_toplayan(args,
-                            data_name,
-                            epoch,
-                            epochs_since_improvement,
-                            encoder_image,
-                            encoder_feat, 
-                            decoder,
-                            encoder_image_optimizer,
-                            encoder_feat_optimizer, 
-                            decoder_optimizer,
-                            bleu4, 
-                            is_best,
-                            clip_encoder):
-    """
-    Saves model checkpoint.
-
-    :param data_name: base name of processed dataset
-    :param epoch: epoch number
-    :param epochs_since_improvement: number of epochs since last improvement in BLEU-4 score
-    :param encoder: encoder model
-    :param decoder: decoder model
-    :param encoder_optimizer: optimizer to update encoder's weights, if fine-tuning
-    :param decoder_optimizer: optimizer to update decoder's weights
-    :param bleu4: validation BLEU-4 score for this epoch
-    :param is_best: is this checkpoint the best so far?
-    """
-    state = {'epoch': epoch,
-             'epochs_since_improvement': epochs_since_improvement,
-             'bleu-4': bleu4,
-             'encoder_image': encoder_image,
-             'encoder_feat': encoder_feat,
-             'decoder': decoder,
-             'encoder_image_optimizer': encoder_image_optimizer,
-             'encoder_feat_optimizer': encoder_feat_optimizer,
-             'decoder_optimizer': decoder_optimizer,
-             'clip_encoder': clip_encoder,
-             }
-    filename = 'checkpoint_' + data_name + '.pth.tar'
-    path = args.savepath #'./models_checkpoint/mymodel/3-times/'
-    if os.path.exists(path)==False:
-        os.makedirs(path)
-        # If this checkpoint is the best so far, store a copy so it doesn't get overwritten by a worse checkpoint
-    if is_best and bleu4["Bleu_4"] > 0.25:
-        torch.save(state, os.path.join(path, 'NEW_BEST_' + filename))
-
-    # torch.save(state, os.path.join(path, 'checkpoint_' + data_name +'_epoch_'+str(epoch) + '.pth.tar'))
-
-def save_checkpoint_CAHI(args,data_name, epoch, epochs_since_improvement, encoder_image, encoder_image2,encoder_feat, decoder,
-                    encoder_image_optimizer,encoder_image_optimizer2,encoder_feat_optimizer, decoder_optimizer,bleu4, is_best):
-    """
-    Saves model checkpoint.
-
-    :param data_name: base name of processed dataset
-    :param epoch: epoch number
-    :param epochs_since_improvement: number of epochs since last improvement in BLEU-4 score
-    :param encoder: encoder model
-    :param decoder: decoder model
-    :param encoder_optimizer: optimizer to update encoder's weights, if fine-tuning
-    :param decoder_optimizer: optimizer to update decoder's weights
-    :param bleu4: validation BLEU-4 score for this epoch
-    :param is_best: is this checkpoint the best so far?
-    """
-    state = {'epoch': epoch,
-             'epochs_since_improvement': epochs_since_improvement,
-             'bleu-4': bleu4,
-             'encoder_image': encoder_image,
-             'encoder_image2': encoder_image2,
-             'encoder_feat': encoder_feat,
-             'decoder': decoder,
-             'encoder_image_optimizer': encoder_image_optimizer,
-             'encoder_image_optimizer2': encoder_image_optimizer2,
-             'encoder_feat_optimizer': encoder_feat_optimizer,
-             'decoder_optimizer': decoder_optimizer,
-             }
-    filename = 'checkpoint_' + data_name + '.pth.tar'
-    path = args.savepath #'./models_checkpoint/mymodel/3-times/'
-    if os.path.exists(path)==False:
-        os.makedirs(path)
-        # If this checkpoint is the best so far, store a copy so it doesn't get overwritten by a worse checkpoint
-    if is_best:
-        torch.save(state, os.path.join(path, 'NEW_BEST_' + filename))
-
-    # torch.save(state, os.path.join(path, 'checkpoint_' + data_name +'_epoch_'+str(epoch) + '.pth.tar'))
-
-def save_checkpoint_lstm(args,data_name, epoch, epochs_since_improvement, encoder_image,lstm,lstm_optimizer,
-                    encoder_image_optimizer,bleu4, is_best):
-    """
-    Saves model checkpoint.
-
-    :param data_name: base name of processed dataset
-    :param epoch: epoch number
-    :param epochs_since_improvement: number of epochs since last improvement in BLEU-4 score
-    :param encoder: encoder model
-    :param decoder: decoder model
-    :param encoder_optimizer: optimizer to update encoder's weights, if fine-tuning
-    :param decoder_optimizer: optimizer to update decoder's weights
-    :param bleu4: validation BLEU-4 score for this epoch
-    :param is_best: is this checkpoint the best so far?
-    """
-    state = {'epoch': epoch,
-             'epochs_since_improvement': epochs_since_improvement,
-             'bleu-4': bleu4,
-             'encoder_image': encoder_image.state_dict(),
-             'lstm': lstm,
-             'encoder_image_optimizer': encoder_image_optimizer,
-             'lstm_optimizer': lstm_optimizer,
-
-             }
-    filename = 'checkpoint_' + data_name + '.pth.tar'
-    path = args.savepath #'./models_checkpoint/mymodel/3-times/'
-    if os.path.exists(path)==False:
-        os.makedirs(path)
-        # If this checkpoint is the best so far, store a copy so it doesn't get overwritten by a worse checkpoint
-    if is_best:
-        torch.save(state, os.path.join(path, 'NEW_BEST_' + filename))
-
-    # torch.save(state, os.path.join(path, 'checkpoint_' + data_name +'_epoch_'+str(epoch) + '.pth.tar'))
-
-def save_checkpoint_carpan(args,data_name, epoch, epochs_since_improvement, encoder_image, encoder_image2,encoder_feat, decoder,
-                    encoder_image_optimizer,encoder_image_optimizer2,encoder_feat_optimizer, decoder_optimizer,bleu4, is_best):
-    """
-    Saves model checkpoint.
-
-    :param data_name: base name of processed dataset
-    :param epoch: epoch number
-    :param epochs_since_improvement: number of epochs since last improvement in BLEU-4 score
-    :param encoder: encoder model
-    :param decoder: decoder model
-    :param encoder_optimizer: optimizer to update encoder's weights, if fine-tuning
-    :param decoder_optimizer: optimizer to update decoder's weights
-    :param bleu4: validation BLEU-4 score for this epoch
-    :param is_best: is this checkpoint the best so far?
-    """
-    state = {'epoch': epoch,
-             'epochs_since_improvement': epochs_since_improvement,
-             'bleu-4': bleu4,
-             'encoder_image': encoder_image,
-             'encoder_image2': encoder_image2,
-             'encoder_feat': encoder_feat,
-             'decoder': decoder,
-             'encoder_image_optimizer': encoder_image_optimizer,
-             'encoder_image_optimizer2': encoder_image_optimizer2,
-             'encoder_feat_optimizer': encoder_feat_optimizer,
-             'decoder_optimizer': decoder_optimizer,
-             }
-    filename = 'checkpoint_' + data_name + '.pth.tar'
-    path = args.savepath #'./models_checkpoint/mymodel/3-times/'
-    if os.path.exists(path)==False:
-        os.makedirs(path)
-        # If this checkpoint is the best so far, store a copy so it doesn't get overwritten by a worse checkpoint
-    if is_best:
-        torch.save(state, os.path.join(path, 'NEW_BEST_' + filename))
-
-    # torch.save(state, os.path.join(path, 'checkpoint_' + data_name +'_epoch_'+str(epoch) + '.pth.tar'))
 
 class AverageMeter(object):
     """
@@ -526,9 +372,11 @@ def accuracy(scores, targets, k):
     correct_total = correct.view(-1).float().sum()  # 0D tensor
     return correct_total.item() * (100.0 / batch_size)
 
-def get_eval_score2(references, hypotheses):
+
+def get_eval_score(references, hypotheses):
     scorers = [
         (Bleu(4), ["Bleu_1", "Bleu_2", "Bleu_3", "Bleu_4"]),
+        (Meteor(), "METEOR"),
         (Rouge(), "ROUGE_L"),
         (Cider(), "CIDEr")
     ]
@@ -544,55 +392,6 @@ def get_eval_score2(references, hypotheses):
         score.extend(score_i) if isinstance(score_i, list) else score.append(score_i)
         method.extend(method_i) if isinstance(method_i, list) else method.append(method_i)
         print("{} {}".format(method_i, score_i))
-    score_dict = dict(zip(method, score))
-
-    return score_dict
-
-def get_eval_score(references, hypotheses, word_map):
-    scorers = [
-        (Bleu(4), ["Bleu_1", "Bleu_2", "Bleu_3", "Bleu_4"]),
-        #(Meteor(), "METEOR"),
-        (Rouge(), "ROUGE_L"),
-        (Cider(), "CIDEr"),
-        (Spice(word_map), "SPICE")
-    ]
-
-    hypo = [[' '.join(hypo)] for hypo in [[str(x) for x in hypo] for hypo in hypotheses]]
-    ref = [[' '.join(reft) for reft in reftmp] for reftmp in
-           [[[str(x) for x in reft] for reft in reftmp] for reftmp in references]]
-
-    score = []
-    method = []
-    for scorer, method_i in scorers:
-        score_i, scores_i = scorer.compute_score(ref, hypo)
-        score.extend(score_i) if isinstance(score_i, list) else score.append(score_i)
-        method.extend(method_i) if isinstance(method_i, list) else method.append(method_i)
-
-        print("{} {}".format(method_i, score_i))
-    score_dict = dict(zip(method, score))
-
-    return score_dict
-
-def get_eval_score_only_bleu(references, hypotheses):
-    scorers = [
-        (Bleu(4), ["Bleu_1", "Bleu_2", "Bleu_3", "Bleu_4"]),
-        #(Meteor(), "METEOR"),
-        #(Rouge(), "ROUGE_L"),
-        #(Cider(), "CIDEr"),
-        #(Spice(word_map), "SPICE")
-    ]
-
-    hypo = [[' '.join(hypo)] for hypo in [[str(x) for x in hypo] for hypo in hypotheses]]
-    ref = [[' '.join(reft) for reft in reftmp] for reftmp in
-           [[[str(x) for x in reft] for reft in reftmp] for reftmp in references]]
-
-    score = []
-    method = []
-    for scorer, method_i in scorers:
-        score_i, scores_i = scorer.compute_score(ref, hypo)
-        score.extend(score_i) if isinstance(score_i, list) else score.append(score_i)
-        method.extend(method_i) if isinstance(method_i, list) else method.append(method_i)
-        print('only bleu eval done')
     score_dict = dict(zip(method, score))
 
     return score_dict
