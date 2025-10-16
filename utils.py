@@ -153,7 +153,7 @@ def create_input_files(dataset, karpathy_json_path, image_folder, captions_per_i
                 assert len(captions) == captions_per_image
 
                 # Read images
-                if dataset =='LEVIR_CC':
+                if dataset =='LEVIR_CC' or dataset =='Second_CC_RGB':
                     img_A = imread(impaths[i][0])
                     img_B = imread(impaths[i][1])
                     if len(img_A.shape) == 2:
