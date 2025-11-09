@@ -14,6 +14,8 @@ from datasets import *
 from utils import *
 from eval import evaluate_transformer
 
+from clip4cc import model_arrange
+
 
 def train(args, train_loader, encoder_image,encoder_feat, decoder, criterion, encoder_image_optimizer,encoder_image_lr_scheduler,encoder_feat_optimizer,encoder_feat_lr_scheduler, decoder_optimizer, decoder_lr_scheduler, epoch):
     """
@@ -130,6 +132,10 @@ def main(args):
     # Initialize
     # Encoder
     encoder_image = CNN_Encoder(NetType=args.encoder_image, method=args.decoder)
+    encoder_image.fine_tune(args.fine_tune_encoder)
+
+    # Retrieval Trained clip 
+    encoder_image = model_arrange.load_model("C:/Users/AliCan/Desktop/clip4idc/ckpts/retrieval/pytorch_model.bin.14")
     encoder_image.fine_tune(args.fine_tune_encoder)
 
     # set the encoder_dim
