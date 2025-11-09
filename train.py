@@ -136,7 +136,7 @@ def main(args):
 
     # Retrieval Trained clip 
     encoder_image = model_arrange.load_model("/content/RSICC/ckpts/pytorch_model.bin.0")
-    encoder_image.fine_tune(args.fine_tune_encoder)
+    #encoder_image.fine_tune(args.fine_tune_encoder)
 
     # set the encoder_dim
     encoder_image_dim = 1024 #resnet101
