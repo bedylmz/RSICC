@@ -135,7 +135,7 @@ def main(args):
     encoder_image.fine_tune(args.fine_tune_encoder)
 
     # Retrieval Trained clip 
-    encoder_image = model_arrange.load_model("C:/Users/AliCan/Desktop/clip4idc/ckpts/retrieval/pytorch_model.bin.14")
+    encoder_image = model_arrange.load_model("/content/RSICC/ckpts/pytorch_model.bin.0")
     encoder_image.fine_tune(args.fine_tune_encoder)
 
     # set the encoder_dim
