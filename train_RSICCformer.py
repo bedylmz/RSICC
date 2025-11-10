@@ -142,7 +142,7 @@ def train(
 
         # clip image encoder 
         for imgA,imgB in zip(clip_imgs_A,clip_imgs_B):
-            encoded = model_arrange.encode_rgb_images_for_rsformer(clip_encoder_image,imgA,imgB,device)
+            encoded = model_arrange.encode_image(clip_encoder_image,imgA,imgB,device)
             clip_encoded.append(encoded)
 
         clip_encoded = torch.stack(clip_encoded)
