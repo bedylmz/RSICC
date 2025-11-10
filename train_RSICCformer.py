@@ -152,7 +152,10 @@ def train(
             encoded = model_arrange.encode_image(clip_encoder_image, imgA_pil, imgB_pil, device)
             clip_encoded.append(encoded)
 
-        clip_encoded = torch.stack(clip_encoded)
+        # stack along batch dimension
+        clip_encoded = torch.stack(clip_encoded).to(device)  # shape [B, 2, 7, 7, 768]
+
+        #clip_encoded = torch.stack(clip_encoded)
 
         fused_feat = encoder_feat(
             #imgs_A,
