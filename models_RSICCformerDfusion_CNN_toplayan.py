@@ -198,11 +198,12 @@ class MCCFormers_diff_as_Q(nn.Module):
         #print("clip_encoded",clip_encoded.shape)
         #print("A*"*50)
 
-        batch = img_feat1.size(0)
         # clip_encoded is already [batch, feature_dim]
         feature_dim = clip_encoded.size(1)
         img_feat1 = clip_encoded
         img_feat2 = clip_encoded    # dummy duplicate to keep downstream ops valid
+        batch = img_feat1.size(0)
+
 
 
         # img_feat1 (batch_size, feature_dim, h, w)
