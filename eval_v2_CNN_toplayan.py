@@ -9,9 +9,9 @@ import argparse
 import time
 import sys
 
-from siglip4cc import model_arrange
+from clip4cc import model_arrange
 
-sys.path.append(r"C:\Users\TUBITAK\Desktop\RSICC_v2\SECONDCCpap")
+#sys.path.append(r"C:\Users\TUBITAK\Desktop\RSICC_v2\SECONDCCpap")
 from utils import *
 import hashlib
 normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
