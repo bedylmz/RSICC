@@ -154,6 +154,14 @@ def train(
 
         # stack along batch dimension
         clip_encoded = torch.stack(clip_encoded).to(device)  # shape [B, 2, 7, 7, 768]
+        print("DEBUG: type(clip_encoded) =", type(clip_encoded))
+        if isinstance(clip_encoded, torch.Tensor):
+            print("DEBUG: clip_encoded.shape =", clip_encoded.shape)
+        elif isinstance(clip_encoded, list):
+            print("DEBUG: len(clip_encoded) =", len(clip_encoded))
+            if len(clip_encoded) > 0 and isinstance(clip_encoded[0], torch.Tensor):
+                print("DEBUG: clip_encoded[0].shape =", clip_encoded[0].shape)
+
 
         #clip_encoded = torch.stack(clip_encoded)
 
