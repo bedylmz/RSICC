@@ -1,16 +1,27 @@
 from utils import create_input_files
 import time
+import argparse
 
 if __name__ == '__main__':
 
+    parser = argparse.ArgumentParser(description = 'Create Input Files')
+    parser.add_argument('--dataset', default = "LEVIR_CC")
+    parser.add_argument('--karpathy_json_path', default = "./Levir_CC_dataset/LevirCCcaptions.json")
+    parser.add_argument('--image_folder', default = "./Levir_CC_dataset/images")
+    parser.add_argument('--captions_per_image', type = int, default = 5)
+    parser.add_argument('--min_word_freq', type = int, default = 5)
+    parser.add_argument('--output_folder', default = './data')
+    parser.add_argument('--max_len', type = int, default = 50)
+    args = parser.parse_args()
+
     print('create_input_files START at: ', time.strftime("%m-%d  %H : %M : %S", time.localtime(time.time())))
 
-    create_input_files(dataset='LEVIR_CC',
-                       karpathy_json_path=r'./Levir_CC_dataset/LevirCCcaptions.json',
-                       image_folder=r'./Levir_CC_dataset/images',
-                       captions_per_image=5,
-                       min_word_freq=5,
-                       output_folder=r'./data',
-                       max_len=50)
+    create_input_files(dataset=args.dataset,
+                       karpathy_json_path=args.karpathy_json_path,
+                       image_folder=args.image_folder,
+                       captions_per_image=args.captions_per_image,
+                       min_word_freq=args.min_word_freq,
+                       output_folder=args.output_folder,
+                       max_len=args.max_len)
 
     print('create_input_files END at: ', time.strftime("%m-%d  %H : %M : %S", time.localtime(time.time())))
