@@ -344,7 +344,7 @@ def main(args, meteor_output=None):
     #clip_encoder_image = model_arrange.load_model("C:/Users/AliCan/Desktop/clip4idc/ckpts/caption/pytorch_model.bin.9")
 
     # Retrieval Trained clip 
-    clip_encoder_image = model_arrange.load_model("C:/Users/AliCan/Desktop/clip4idc/ckpts/retrieval/pytorch_model.bin.14")
+    clip_encoder_image = model_arrange.load_model("/content/RSICC/ckpts/pytorch_model.bin.0")
     # encoder_image2 = CNN_Encoder(NetType=args.encoder_image, method=args.decoder)
 
     # encoder_image.fine_tune(args.fine_tune_encoder)
