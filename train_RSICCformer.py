@@ -139,10 +139,17 @@ def train(
         # rsformer image encoder 
         #imgs_A = encoder_image(imgs_A)  # imgs_A: [batch_size,1024, 14, 14]
         #imgs_B = encoder_image(imgs_B)  # batch time = 0.35
+        # Convert a single tensor image (C,H,W) in range [0,1] or [0,255] to PIL
+        to_pil = transforms.ToPILImage()
 
         # clip image encoder 
         for imgA,imgB in zip(clip_imgs_A,clip_imgs_B):
-            encoded = model_arrange.encode_image(clip_encoder_image,imgA,imgB,device)
+            # Clamp and convert to PIL
+            imgA_pil = to_pil(imgA.cpu().clamp(0, 1))
+            imgB_pil = to_pil(imgB.cpu().clamp(0, 1))
+
+            # Now pass PIL images to your CLIP encode function
+            encoded = model_arrange.encode_image(clip_encoder_image, imgA_pil, imgB_pil, device)
             clip_encoded.append(encoded)
 
         clip_encoded = torch.stack(clip_encoded)
