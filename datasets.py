@@ -53,11 +53,13 @@ class CaptionDataset(Dataset):
         # FIXME：original
         # Remember, the Nth caption corresponds to the (N // captions_per_image)th image
         img = torch.FloatTensor(self.imgs[i // self.cpi] / 255.)
+        # DÜZELTME: Boyut kontrolü yapmadan transformu uygula
         if self.transform is not None:
-            if img.shape == torch.Size([3,224,224]):
+            # Eğer tek bir resimse (3 kanal)
+            if img.dim() == 3:  
                 img = self.transform(img)
-            elif img.shape == torch.Size([2,3,224,224]):
-                ori_img = img
+            # Eğer çift resimse (Before/After - 4 boyut: 2x3xHxW)
+            elif img.dim() == 4: 
                 img[0] = self.transform(img[0])
                 img[1] = self.transform(img[1])
 
