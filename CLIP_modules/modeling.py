@@ -8,11 +8,11 @@ import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
 
-from modules.until_module import PreTrainedModel, AllGather, CrossEn
-from modules.module_cross import CrossModel, CrossConfig
-from modules.module_decoder import DecoderModel, DecoderConfig
+from CLIP_modules.until_module import PreTrainedModel, AllGather, CrossEn
+from CLIP_modules.module_cross import CrossModel, CrossConfig
+from CLIP_modules.module_decoder import DecoderModel, DecoderConfig
 
-from modules.module_clip import CLIP, convert_weights
+from CLIP_modules.module_clip import CLIP, convert_weights
 from torch.nn.utils.rnn import pad_packed_sequence, pack_padded_sequence
 
 logger = logging.getLogger(__name__)
