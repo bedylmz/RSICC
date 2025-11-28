@@ -24,6 +24,8 @@ from utils import *
 
 from torchvision.transforms.functional import to_pil_image
 
+from exploringDebugging import write_debug
+
 seed = 1
 torch.manual_seed(seed)
 
@@ -164,6 +166,8 @@ def train(
 
 
         #clip_encoded = torch.stack(clip_encoded)
+
+        write_debug("clip_encoded", clip_encoded)
 
         NewimgA = clip_encoded[:, 0, :, :, :]
         NewimgB = clip_encoded[:, 1, :, :, :]
