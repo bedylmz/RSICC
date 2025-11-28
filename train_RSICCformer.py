@@ -58,6 +58,7 @@ import os
 import argparse
 from CLIP_modules.modeling import CLIP4IDC
 from CLIP_dataloaders.raw_image_util import RawImageExtractor
+from CLIP_modules.optimization import BertAdam
 
 from CLIP_modules.module_clip import CLIP
 
