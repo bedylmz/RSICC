@@ -534,7 +534,7 @@ def main(args, meteor_output=None):
     num_train_optimization_steps = len(train_loader) * args.epochs 
 
     # 1. Encoder'ı Hazırla
-    clip_encoder_image = load_trained_visual_encoder("", device)
+    clip_encoder_image = load_trained_visual_encoder("/content/RSICC/pytorch_model.bin.0", device)
     print("Visual Encoder başarıyla ayıklandı.")
 
     clip_encoder_optimizer, clip_encoder_scheduler, clip_encoder_image = prep_optimizer(
