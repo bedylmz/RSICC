@@ -59,6 +59,8 @@ import argparse
 from CLIP_modules.modeling import CLIP4IDC
 from CLIP_dataloaders.raw_image_util import RawImageExtractor
 
+from CLIP_modules.module_clip import CLIP
+
 # 1. Konfigürasyon (Modeli init etmek için gerekli argümanlar)
 # Eğittiğiniz modelin parametreleriyle (katman sayısı vb.) uyumlu olmalıdır.
 class ModelConfig:
@@ -111,6 +113,73 @@ def load_trained_visual_encoder(checkpoint_path, device):
     visual_encoder = model.clip.visual
     
     return visual_encoder
+
+def load_custom_visual_encoder(checkpoint_path, device, intra_num_hidden_layers=9):
+    """
+    CLIP4IDC wrapper'ı olmadan, INTRA layerları da içeren
+    özelleştirilmiş Visual Encoder'ı yükler.
+    
+    Args:
+        intra_num_hidden_layers: Eğitimde kullandığınız intra layer sayısı (varsayılan: 9)
+    """
+    print(f"Checkpoint yükleniyor: {checkpoint_path}")
+    state_dict = torch.load(checkpoint_path, map_location='cpu')
+    
+    if "model_state_dict" in state_dict:
+        state_dict = state_dict["model_state_dict"]
+
+    # --- 1. Model Parametrelerini Algıla ---
+    # Modelin boyutlarını checkpointten okuyoruz
+    embed_dim = state_dict["clip.text_projection"].shape[1]
+    context_length = state_dict["clip.positional_embedding"].shape[0]
+    vocab_size = state_dict["clip.token_embedding.weight"].shape[0]
+    transformer_width = state_dict["clip.ln_final.weight"].shape[0]
+    transformer_heads = transformer_width // 64
+    transformer_layers = len(set(k.split(".")[2] for k in state_dict if k.startswith("clip.transformer.resblocks")))
+
+    vision_width = state_dict["clip.visual.conv1.weight"].shape[0]
+    vision_layers = len([k for k in state_dict.keys() if k.startswith("clip.visual.") and k.endswith(".attn.in_proj_weight")])
+    
+    # Patch size hesaplama
+    vision_patch_size = state_dict["clip.visual.conv1.weight"].shape[-1]
+    grid_size = round((state_dict["clip.visual.positional_embedding"].shape[0] - 1) ** 0.5)
+    image_resolution = vision_patch_size * grid_size
+
+    print(f"Model Yapılandırması: Res={image_resolution}, VisLayers={vision_layers}, IntraLayers={intra_num_hidden_layers}")
+
+    # --- 2. CLIP Modelini INTRA Parametresiyle Başlat ---
+    # ÖNEMLİ: intra_layers parametresini buraya ekliyoruz!
+    model = CLIP(
+        embed_dim,
+        image_resolution,
+        vision_layers,
+        vision_width,
+        vision_patch_size,
+        context_length,
+        vocab_size,
+        transformer_width,
+        transformer_heads,
+        transformer_layers,
+        intra_layers=intra_num_hidden_layers  # <--- BURASI KRİTİK
+    ).float()
+
+    # --- 3. Ağırlıkları Yükle ---
+    new_state_dict = {}
+    for k, v in state_dict.items():
+        if k.startswith("clip."):
+            new_key = k[5:] 
+            new_state_dict[new_key] = v
+            
+    # strict=False kullanıyoruz çünkü text encoder ağırlıklarını yüklemesek de olur
+    # ama visual encoder eksiksiz yüklenecektir.
+    msg = model.load_state_dict(new_state_dict, strict=False)
+    print("Yükleme Durumu:", msg)
+    
+    model.to(device)
+    model.eval()
+    
+    # Görsel encoder'ı döndür
+    return model.visual
 
 def train(
     args,
@@ -201,8 +270,8 @@ def train(
         # Convert a single tensor image (C,H,W) in range [0,1] or [0,255] to PIL
         
         # --new--
-        imgs_A = visual_encoder(img_pairs[:, 0, :, :, :])
-        imgs_B = visual_encoder(img_pairs[:, 1, :, :, :])
+        imgs_A = clip_encoder_image(img_pairs[:, 0, :, :, :])
+        imgs_B = clip_encoder_image(img_pairs[:, 1, :, :, :])
 
         """to_pil = transforms.ToPILImage()
 
@@ -534,8 +603,16 @@ def main(args, meteor_output=None):
     num_train_optimization_steps = len(train_loader) * args.epochs 
 
     # 1. Encoder'ı Hazırla
-    clip_encoder_image = load_trained_visual_encoder("/content/RSICC/pytorch_model.bin.0", device)
-    print("Visual Encoder başarıyla ayıklandı.")
+    # --- KULLANIM ---
+    # Eğitimde kullandığınız intra layer sayısını (args.intra_num_hidden_layers) buraya yazın.
+    # Kodlarınızda varsayılan değer 9 görünüyordu.
+    clip_encoder_image = load_custom_visual_encoder(
+        "/content/RSICC/pytorch_model.bin.0", 
+        device, 
+        intra_num_hidden_layers=9
+    )
+    #clip_encoder_image = load_trained_visual_encoder("/content/RSICC/pytorch_model.bin.0", device)
+    #print("Visual Encoder başarıyla ayıklandı.")
 
     clip_encoder_optimizer, clip_encoder_scheduler, clip_encoder_image = prep_optimizer(
             args,
