@@ -1,3 +1,5 @@
+""" OLD IMPORTS
+
 import sys
 import time
 import torch.backends.cudnn as cudnn
@@ -23,6 +25,26 @@ from bert_adam_optimizer import BertAdam
 from utils import *
 
 from torchvision.transforms.functional import to_pil_image
+"""
+
+import datetime
+import time
+import torch.backends.cudnn as cudnn
+import torch.optim
+import torch.utils.data
+import torchvision.transforms as transforms
+from torch import nn
+from torch.nn.utils.rnn import pack_padded_sequence
+import argparse
+from torch.optim.lr_scheduler import StepLR
+
+from models import CNN_Encoder
+from models_RSICCformerDfusion import *
+from datasets import *
+from utils import *
+from eval import evaluate_transformer
+
+
 
 from exploringDebugging import write_debug
 
@@ -59,6 +81,65 @@ def print_with_json(text):
     print(text)
     text_terminal += str(text) + "\n"
 
+
+import torch
+import os
+import argparse
+from CLIP_modules.modeling import CLIP4IDC
+from CLIP_dataloaders.raw_image_util import RawImageExtractor
+
+# 1. Konfigürasyon (Modeli init etmek için gerekli argümanlar)
+# Eğittiğiniz modelin parametreleriyle (katman sayısı vb.) uyumlu olmalıdır.
+class ModelConfig:
+    cross_model = "cross-base"
+    decoder_model = "decoder-base"
+    cache_dir = ""
+    type_vocab_size = 2
+    task_type = "retrieval" 
+    linear_patch = "2d" # Eğer 3d kullandıysanız değiştirin
+    local_rank = 0
+    # Eğitimde kullandığınız diğer önemli configler buraya eklenebilir
+    intra_num_hidden_layers = 9 # Varsayılan değerler (eğitimde değiştirdiyseniz güncelleyin)
+    pretrained_clip_name = "ViT-B/32"
+
+def load_trained_visual_encoder(checkpoint_path, device):
+    """
+    Eğitilmiş checkpoint'ten sadece visual encoder'ı döndürür.
+    """
+    args = ModelConfig()
+    
+    # Checkpoint'i yükle
+    if not os.path.exists(checkpoint_path):
+        raise FileNotFoundError(f"Checkpoint bulunamadı: {checkpoint_path}")
+        
+    print(f"Model yükleniyor: {checkpoint_path}")
+    
+    # State dict'i CPU'ya yükleyerek bellek tasarrufu yapalım
+    state_dict = torch.load(checkpoint_path, map_location='cpu')
+    
+    # Eğer checkpoint optimizer durumunu da içeriyorsa (genelde epoch ile biten dosyalarda olur),
+    # sadece model ağırlıklarını almalıyız. Ancak modeling.py içindeki from_pretrained
+    # genellikle sadece model weight bekler. Eğer 'model_state_dict' gibi bir key altındaysa:
+    if "model_state_dict" in state_dict:
+        state_dict = state_dict["model_state_dict"]
+    
+    # Modeli Başlat (CLIP4IDC yapısı)
+    # Not: from_pretrained fonksiyonu modeling.py içinde state_dict parametresi alabiliyor.
+    model = CLIP4IDC.from_pretrained(
+        args.cross_model, 
+        args.decoder_model, 
+        state_dict=state_dict, 
+        task_config=args
+    )
+    
+    model.to(device)
+    model.eval()
+    
+    # Bütün modeli kullanmak yerine sadece CLIP'in visual modülünü alıyoruz.
+    # modeling.py incelemesine göre yapı: model -> clip -> visual
+    visual_encoder = model.clip.visual
+    
+    return visual_encoder
 
 def train(
     args,
@@ -109,6 +190,13 @@ def train(
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
+    # 1. Encoder'ı Hazırla
+    visual_encoder = load_trained_visual_encoder("", device)
+    print("Visual Encoder başarıyla ayıklandı.")
+
+    
+
     for i, (img_pairs, caps, caplens) in enumerate(train_loader):
         #         if i == 20:
         #             break
@@ -142,7 +230,12 @@ def train(
         #imgs_A = encoder_image(imgs_A)  # imgs_A: [batch_size,1024, 14, 14]
         #imgs_B = encoder_image(imgs_B)  # batch time = 0.35
         # Convert a single tensor image (C,H,W) in range [0,1] or [0,255] to PIL
-        to_pil = transforms.ToPILImage()
+        
+        # --new--
+        imgs_A = visual_encoder(img_pairs[:, 0, :, :, :])
+        imgs_B = visual_encoder(img_pairs[:, 1, :, :, :])
+
+        """to_pil = transforms.ToPILImage()
 
         # clip image encoder 
         for imgA,imgB in zip(clip_imgs_A,clip_imgs_B):
@@ -170,13 +263,11 @@ def train(
         write_debug("clip_encoded", clip_encoded)
 
         NewimgA = clip_encoded[:, 0, :, :, :]
-        NewimgB = clip_encoded[:, 1, :, :, :]
+        NewimgB = clip_encoded[:, 1, :, :, :]"""
 
         fused_feat = encoder_feat(
-            #imgs_A,
-            #imgs_B,
-            NewimgA,
-            NewimgB
+            imgs_A,
+            imgs_B,
             #clip_encoded
         ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
 
