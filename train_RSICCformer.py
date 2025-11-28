@@ -162,9 +162,7 @@ def train(
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-    # 1. Encoder'ı Hazırla
-    visual_encoder = load_trained_visual_encoder("", device)
-    print("Visual Encoder başarıyla ayıklandı.")
+    
 
     
 
@@ -433,7 +431,7 @@ def main(args, meteor_output=None):
     #clip_encoder_image = model_arrange.load_model("C:/Users/AliCan/Desktop/clip4idc/ckpts/caption/pytorch_model.bin.9")
 
     # Retrieval Trained clip 
-    clip_encoder_image = model_arrange.load_model("/content/RSICC/ckpts/pytorch_model.bin.0")
+    #clip_encoder_image = model_arrange.load_model("/content/RSICC/ckpts/pytorch_model.bin.0")
     # encoder_image2 = CNN_Encoder(NetType=args.encoder_image, method=args.decoder)
 
     # encoder_image.fine_tune(args.fine_tune_encoder)
@@ -535,6 +533,10 @@ def main(args, meteor_output=None):
 
     num_train_optimization_steps = len(train_loader) * args.epochs 
 
+    # 1. Encoder'ı Hazırla
+    clip_encoder_image = load_trained_visual_encoder("", device)
+    print("Visual Encoder başarıyla ayıklandı.")
+
     clip_encoder_optimizer, clip_encoder_scheduler, clip_encoder_image = prep_optimizer(
             args,
             clip_encoder_image,
@@ -619,7 +621,7 @@ def main(args, meteor_output=None):
         checkpoint_name = (
             args.encoder_image_model + "_" + args.encoder_feat + "_" + args.decoder
         )  # _tengxun_aggregation
-        save_checkpoint_toplayan(
+        """save_checkpoint_toplayan(
             args,
             checkpoint_name,
             epoch,
@@ -633,7 +635,7 @@ def main(args, meteor_output=None):
             metrics,
             is_best,
             clip_encoder_image
-        )
+        )"""
     train_model_sonuc_map["losses"] = losses_output
     train_model_sonuc_map["avg_losses"] = AVG_losses_output
     train_model_sonuc_map["top5_acc"] = top5_accuracy_output
