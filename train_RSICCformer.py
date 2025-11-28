@@ -1,32 +1,3 @@
-""" OLD IMPORTS
-
-import sys
-import time
-import torch.backends.cudnn as cudnn
-import torch.optim
-import torch.utils.data
-import torchvision.transforms as transforms
-import subprocess
-from torch.nn.utils.rnn import pack_padded_sequence
-import argparse
-from torch.optim.lr_scheduler import StepLR
-import datetime
-
-from models_CNN_toplayan import CNN_Encoder
-from models_RSICCformerDfusion_CNN_toplayan import *
-from datasets import *
-from eval_v2_CNN_toplayan import evaluate_transformer
-import sys
-
-from clip4cc import model_arrange
-from bert_adam_optimizer import BertAdam
-
-#sys.path.append(r"C:\Users\TUBITAK\Desktop\RSICC_v2\SECONDCCpap")
-from utils import *
-
-from torchvision.transforms.functional import to_pil_image
-"""
-
 import datetime
 import time
 import torch.backends.cudnn as cudnn
