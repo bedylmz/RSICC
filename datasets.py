@@ -54,9 +54,9 @@ class CaptionDataset(Dataset):
         # Remember, the Nth caption corresponds to the (N // captions_per_image)th image
         img = torch.FloatTensor(self.imgs[i // self.cpi] / 255.)
         if self.transform is not None:
-            if img.shape == torch.Size([3,256,256]):
+            if img.shape == torch.Size([3,224,224]):
                 img = self.transform(img)
-            elif img.shape == torch.Size([2,3,256,256]):
+            elif img.shape == torch.Size([2,3,224,224]):
                 ori_img = img
                 img[0] = self.transform(img[0])
                 img[1] = self.transform(img[1])

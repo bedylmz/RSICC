@@ -106,7 +106,7 @@ class LEVIRCC_DataLoader(Dataset):
 
         # # if subset is test or val then return 10 items
         # if self.subset == "test" or self.subset == "val":
-        # self.sample_len = 256
+        # self.sample_len = 224
 
     def __len__(self):
         return self.sample_len
