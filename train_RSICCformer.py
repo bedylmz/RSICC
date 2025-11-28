@@ -165,10 +165,15 @@ def train(
 
         #clip_encoded = torch.stack(clip_encoded)
 
+        NewimgA = clip_encoded[:, 0, :, :, :]
+        NewimgB = clip_encoded[:, 1, :, :, :]
+
         fused_feat = encoder_feat(
             #imgs_A,
             #imgs_B,
-            clip_encoded
+            NewimgA,
+            NewimgB
+            #clip_encoded
         ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
 
         scores, caps_sorted, decode_lengths, sort_ind = decoder(fused_feat, caps, caplens)
