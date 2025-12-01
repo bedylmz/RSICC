@@ -593,8 +593,13 @@ def main(args, meteor_output=None):
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     # pin_memory: If True, the data loader will copy Tensors into CUDA pinned memory before returning them.
     # If your data elements are a custom type, or your collate_fn returns a batch that is a custom type.
+    # Önce Resize ekliyoruz, sonra Normalize yapıyoruz
     train_loader = torch.utils.data.DataLoader(
-        CaptionDataset(args.data_folder, args.data_name, "TRAIN", transform=transforms.Compose([normalize])),
+        CaptionDataset(args.data_folder, args.data_name, "TRAIN", 
+                    transform=transforms.Compose([
+                        transforms.Resize((224, 224)),  # <--- BURAYI EKLEYİN
+                        normalize
+                    ])),
         batch_size=args.batch_size,
         shuffle=True,
         num_workers=args.workers,
