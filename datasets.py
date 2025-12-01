@@ -50,30 +50,38 @@ class CaptionDataset(Dataset):
 
 
     def __getitem__(self, i):
-        # FIXME：original
-        # Remember, the Nth caption corresponds to the (N // captions_per_image)th image
-        img = torch.FloatTensor(self.imgs[i // self.cpi] / 255.)
-        # DÜZELTME: Boyut kontrolü yapmadan transformu uygula
+        # Orijinal resmi yükle (Boyut: 256x256)
+        # img değişkeni burada [2, 3, 256, 256] boyutunda bir tensör olur.
+        raw_img = torch.FloatTensor(self.imgs[i // self.cpi] / 255.)
+
         if self.transform is not None:
-            # Eğer tek bir resimse (3 kanal)
-            if img.dim() == 3:  
-                img = self.transform(img)
-            # Eğer çift resimse (Before/After - 4 boyut: 2x3xHxW)
-            elif img.dim() == 4: 
-                img[0] = self.transform(img[0])
-                img[1] = self.transform(img[1])
+            # Durum 1: Tek resim varsa (3, H, W)
+            if raw_img.dim() == 3:
+                img = self.transform(raw_img)
+            
+            # Durum 2: Çift resim varsa (Before/After) -> (2, 3, H, W)
+            elif raw_img.dim() == 4:
+                # HATA ÇÖZÜMÜ:
+                # Yerinde değiştirme (img[0] = ...) YAPMIYORUZ.
+                # Dönüştürülmüş (224x224) resimleri yeni bir listede topluyoruz.
+                img0 = self.transform(raw_img[0])
+                img1 = self.transform(raw_img[1])
+                
+                # Listeyi birleştirip yeni bir tensör yaratıyoruz.
+                # Sonuç: [2, 3, 224, 224]
+                img = torch.stack([img0, img1])
+        else:
+            img = raw_img
 
         caption = torch.LongTensor(self.captions[i])
         caplen = torch.LongTensor([self.caplens[i]])
 
-        if self.split is 'TRAIN':
+        if self.split == 'TRAIN':
             return img, caption, caplen
         else:
-            # For validation of testing, also return all 'captions_per_image' captions to find BLEU-4 score
             all_captions = torch.LongTensor(
                 self.captions[((i // self.cpi) * self.cpi):(((i // self.cpi) * self.cpi) + self.cpi)])
             return img, caption, caplen, all_captions
-
         # #FIXME：my; Now i is i-th image
         # if self.split is 'TRAIN':
         #     i = i * self.cpi
