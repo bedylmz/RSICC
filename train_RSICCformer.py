@@ -271,8 +271,9 @@ def train(
         # Convert a single tensor image (C,H,W) in range [0,1] or [0,255] to PIL
         
         # --new--
-        imgs_A = clip_encoder_image(img_pairs[:, 0, :, :, :])
-        imgs_B = clip_encoder_image(img_pairs[:, 1, :, :, :])
+        # video_frame=1 parametresini ekliyoruz
+        imgs_A = clip_encoder_image(img_pairs[:, 0, :, :, :], video_frame=1)
+        imgs_B = clip_encoder_image(img_pairs[:, 1, :, :, :], video_frame=1)
 
         """to_pil = transforms.ToPILImage()
 
