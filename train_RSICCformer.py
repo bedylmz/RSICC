@@ -608,7 +608,7 @@ def main(args, meteor_output=None):
     # Eğitimde kullandığınız intra layer sayısını (args.intra_num_hidden_layers) buraya yazın.
     # Kodlarınızda varsayılan değer 9 görünüyordu.
     clip_encoder_image = load_custom_visual_encoder(
-        "/content/RSICC/pytorch_model.bin.0", 
+        "/content/RSICC/pytorch_model.bin.19", 
         device, 
         intra_num_hidden_layers=9
     )
