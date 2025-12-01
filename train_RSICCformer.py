@@ -271,9 +271,23 @@ def train(
         # Convert a single tensor image (C,H,W) in range [0,1] or [0,255] to PIL
         
         # --new--
-        # video_frame=1 parametresini ekliyoruz
-        imgs_A = clip_encoder_image(img_pairs[:, 0, :, :, :], video_frame=1)
-        imgs_B = clip_encoder_image(img_pairs[:, 1, :, :, :], video_frame=1)
+        # Önce tekil görüntüleri alıyoruz: [Batch, 3, 224, 224]
+        img_A_single = img_pairs[:, 0, :, :, :]
+        img_B_single = img_pairs[:, 1, :, :, :]
+
+        # YÖNTEM: Concatenate (Birleştirme)
+        # 1. Unsqueeze(1) ile olmayan boyut ekliyoruz: [Batch, 1, 3, 224, 224]
+        # 2. torch.cat ile kendisiyle birleştiriyoruz: [Batch, 2, 3, 224, 224]
+        
+        # A Görüntüsü İçin Hazırlık
+        img_A_input = torch.cat([img_A_single.unsqueeze(1), img_A_single.unsqueeze(1)], dim=1)
+        imgs_A_features = clip_encoder_image(img_A_input, video_frame=2)
+        imgs_A = imgs_A_features[:, 0, :] # Sadece ilk karenin özelliklerini al (zaten kopyasıydı)
+
+        # B Görüntüsü İçin Hazırlık
+        img_B_input = torch.cat([img_B_single.unsqueeze(1), img_B_single.unsqueeze(1)], dim=1)
+        imgs_B_features = clip_encoder_image(img_B_input, video_frame=2)
+        imgs_B = imgs_B_features[:, 0, :] # Sadece ilk karenin özelliklerini al
 
         """to_pil = transforms.ToPILImage()
 
