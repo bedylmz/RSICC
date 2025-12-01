@@ -271,23 +271,32 @@ def train(
         # Convert a single tensor image (C,H,W) in range [0,1] or [0,255] to PIL
         
         # --new--
-        # Önce tekil görüntüleri alıyoruz: [Batch, 3, 224, 224]
+        # Tekil görüntüleri al: [Batch, 3, 224, 224]
         img_A_single = img_pairs[:, 0, :, :, :]
         img_B_single = img_pairs[:, 1, :, :, :]
 
-        # YÖNTEM: Concatenate (Birleştirme)
-        # 1. Unsqueeze(1) ile olmayan boyut ekliyoruz: [Batch, 1, 3, 224, 224]
-        # 2. torch.cat ile kendisiyle birleştiriyoruz: [Batch, 2, 3, 224, 224]
+        # YÖNTEM: Concatenate + View (Düzleştirme)
         
-        # A Görüntüsü İçin Hazırlık
-        img_A_input = torch.cat([img_A_single.unsqueeze(1), img_A_single.unsqueeze(1)], dim=1)
+        # 1. A Resmini Hazırla
+        # [Batch, 2, 3, 224, 224] oluşturuyoruz (Sizin yaptığınız kısım)
+        img_A_input_5d = torch.cat([img_A_single.unsqueeze(1), img_A_single.unsqueeze(1)], dim=1)
+        
+        # HATA ÇÖZÜMÜ: 5D -> 4D'ye çeviriyoruz ([Batch * 2, 3, 224, 224])
+        # Model bunu "52 tane resim" olarak görecek, içeride "26 tane 2 karelik video" olduğunu video_frame=2 ile anlayacak.
+        b, t, c, h, w = img_A_input_5d.shape
+        img_A_input = img_A_input_5d.view(b * t, c, h, w) 
+        
         imgs_A_features = clip_encoder_image(img_A_input, video_frame=2)
-        imgs_A = imgs_A_features[:, 0, :] # Sadece ilk karenin özelliklerini al (zaten kopyasıydı)
+        imgs_A = imgs_A_features[:, 0, :] # İlk kareyi al
 
-        # B Görüntüsü İçin Hazırlık
-        img_B_input = torch.cat([img_B_single.unsqueeze(1), img_B_single.unsqueeze(1)], dim=1)
+        # 2. B Resmini Hazırla
+        img_B_input_5d = torch.cat([img_B_single.unsqueeze(1), img_B_single.unsqueeze(1)], dim=1)
+        
+        # Aynı şekilde düzleştiriyoruz
+        img_B_input = img_B_input_5d.view(b * t, c, h, w)
+        
         imgs_B_features = clip_encoder_image(img_B_input, video_frame=2)
-        imgs_B = imgs_B_features[:, 0, :] # Sadece ilk karenin özelliklerini al
+        imgs_B = imgs_B_features[:, 0, :] # İlk kareyi al
 
         """to_pil = transforms.ToPILImage()
 
