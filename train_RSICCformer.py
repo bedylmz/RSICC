@@ -477,6 +477,7 @@ def main(args, meteor_output=None):
             n_head=args.n_heads,
             n_layers=args.n_layers,
         )
+        
 
     # Decoder
     args.feature_dim_de = 1024 # 当有concat是1024,否则为512
