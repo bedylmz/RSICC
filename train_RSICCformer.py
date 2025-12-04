@@ -53,7 +53,7 @@ def print_with_json(text):
     text_terminal += str(text) + "\n"
 
 
-import CLIP_modules
+from CLIP_modules.modeling import CLIP4IDCPreTrainedModel
 
 from CLIP_modules.file_utils import PYTORCH_PRETRAINED_BERT_CACHE
 
@@ -68,7 +68,7 @@ class CLIPVisualEncoder(nn.Module):
                 "distributed",
             )
         )
-        self.clip_model = CLIP_modules.modeling.CLIP4IDCPreTrainedModel.from_pretrained(
+        self.clip_model = CLIP4IDCPreTrainedModel.from_pretrained(
             args.cross_model,
             cache_dir=cache_dir,
             state_dict=model_state_dict,
