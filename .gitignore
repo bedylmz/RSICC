@@ -8,7 +8,6 @@ wheels/
 
 # Virtual environments
 .venv
-*.json
 /model_sonucları
 .idea
 *.tar
