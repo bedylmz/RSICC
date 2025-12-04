@@ -53,134 +53,62 @@ def print_with_json(text):
     text_terminal += str(text) + "\n"
 
 
-import torch
-import os
-import argparse
-from CLIP_modules.modeling import CLIP4IDC
-from CLIP_dataloaders.raw_image_util import RawImageExtractor
-from CLIP_modules.optimization import BertAdam
+import CLIP_modules
 
-from CLIP_modules.module_clip import CLIP
+from CLIP_modules.file_utils import PYTORCH_PRETRAINED_BERT_CACHE
 
-# 1. Konfigürasyon (Modeli init etmek için gerekli argümanlar)
-# Eğittiğiniz modelin parametreleriyle (katman sayısı vb.) uyumlu olmalıdır.
-class ModelConfig:
-    cross_model = "cross-base"
-    decoder_model = "decoder-base"
-    cache_dir = ""
-    type_vocab_size = 2
-    task_type = "retrieval" 
-    linear_patch = "2d" # Eğer 3d kullandıysanız değiştirin
-    local_rank = 0
-    # Eğitimde kullandığınız diğer önemli configler buraya eklenebilir
-    intra_num_hidden_layers = 9 # Varsayılan değerler (eğitimde değiştirdiyseniz güncelleyin)
-    pretrained_clip_name = "ViT-B/32"
-
-def load_trained_visual_encoder(checkpoint_path, device):
-    """
-    Eğitilmiş checkpoint'ten sadece visual encoder'ı döndürür.
-    """
-    args = ModelConfig()
-    
-    # Checkpoint'i yükle
-    if not os.path.exists(checkpoint_path):
-        raise FileNotFoundError(f"Checkpoint bulunamadı: {checkpoint_path}")
+class CLIPVisualEncoder(nn.Module):
+    def __init__(self, clip_model_path, target_dim):
+        super().__init__()
+        # 1. Sizin kütüphanenizden CLIP modelini başlatın
+        # Prepare model
+        cache_dir = (
+            args.cache_dir
+            if args.cache_dir
+            else os.path.join(
+                str(PYTORCH_PRETRAINED_BERT_CACHE),
+                "distributed",
+            )
+        )
+        self.clip_model = CLIP_modules.from_pretrained(
+            args.cross_model,
+            cache_dir=cache_dir,
+            state_dict=model_state_dict,
+            task_config=args,
+        )
         
-    print(f"Model yükleniyor: {checkpoint_path}")
-    
-    # State dict'i CPU'ya yükleyerek bellek tasarrufu yapalım
-    state_dict = torch.load(checkpoint_path, map_location='cpu')
-    
-    # Eğer checkpoint optimizer durumunu da içeriyorsa (genelde epoch ile biten dosyalarda olur),
-    # sadece model ağırlıklarını almalıyız. Ancak modeling.py içindeki from_pretrained
-    # genellikle sadece model weight bekler. Eğer 'model_state_dict' gibi bir key altındaysa:
-    if "model_state_dict" in state_dict:
-        state_dict = state_dict["model_state_dict"]
-    
-    # Modeli Başlat (CLIP4IDC yapısı)
-    # Not: from_pretrained fonksiyonu modeling.py içinde state_dict parametresi alabiliyor.
-    model = CLIP4IDC.from_pretrained(
-        args.cross_model, 
-        args.decoder_model, 
-        state_dict=state_dict, 
-        task_config=args
-    )
-    
-    model.to(device)
-    model.eval()
-    
-    # Bütün modeli kullanmak yerine sadece CLIP'in visual modülünü alıyoruz.
-    # modeling.py incelemesine göre yapı: model -> clip -> visual
-    visual_encoder = model.clip.visual
-    
-    return visual_encoder
+        # 2. Checkpoint'i yükleyin
+        model_state_dict = torch.load(clip_model_path, map_location="cpu")
+        self.clip_model.load_state_dict(model_state_dict['model_state_dict']) # Key'lere dikkat
 
-def load_custom_visual_encoder(checkpoint_path, device, intra_num_hidden_layers=9):
-    """
-    CLIP4IDC wrapper'ı olmadan, INTRA layerları da içeren
-    özelleştirilmiş Visual Encoder'ı yükler.
-    
-    Args:
-        intra_num_hidden_layers: Eğitimde kullandığınız intra layer sayısı (varsayılan: 9)
-    """
-    print(f"Checkpoint yükleniyor: {checkpoint_path}")
-    state_dict = torch.load(checkpoint_path, map_location='cpu')
-    
-    if "model_state_dict" in state_dict:
-        state_dict = state_dict["model_state_dict"]
+        # Sadece görsel kısmı al (örneğin visual transformer)
+        self.visual_encoder = self.clip_model.visual 
 
-    # --- 1. Model Parametrelerini Algıla ---
-    # Modelin boyutlarını checkpointten okuyoruz
-    embed_dim = state_dict["clip.text_projection"].shape[1]
-    context_length = state_dict["clip.positional_embedding"].shape[0]
-    vocab_size = state_dict["clip.token_embedding.weight"].shape[0]
-    transformer_width = state_dict["clip.ln_final.weight"].shape[0]
-    transformer_heads = transformer_width // 64
-    transformer_layers = len(set(k.split(".")[2] for k in state_dict if k.startswith("clip.transformer.resblocks")))
+        # Modelin orijinal çıktı boyutunu al (örn: 768)
+        clip_out_dim = self.visual_encoder.output_dim 
 
-    vision_width = state_dict["clip.visual.conv1.weight"].shape[0]
-    vision_layers = len([k for k in state_dict.keys() if k.startswith("clip.visual.") and k.endswith(".attn.in_proj_weight")])
-    
-    # Patch size hesaplama
-    vision_patch_size = state_dict["clip.visual.conv1.weight"].shape[-1]
-    grid_size = round((state_dict["clip.visual.positional_embedding"].shape[0] - 1) ** 0.5)
-    image_resolution = vision_patch_size * grid_size
+        # 3. Boyut Eşitleyici (Projection Layer)
+        self.projection = nn.Linear(clip_out_dim, target_dim)
 
-    print(f"Model Yapılandırması: Res={image_resolution}, VisLayers={vision_layers}, IntraLayers={intra_num_hidden_layers}")
+        # 4. İsteğe bağlı: CLIP encoder'ı dondur (freeze) 
+        # Eğer sadece feature extractor olacaksa dondurun, eğitilecekse açık bırakın.
+        for param in self.visual_encoder.parameters():
+            param.requires_grad = False # veya True
 
-    # --- 2. CLIP Modelini INTRA Parametresiyle Başlat ---
-    # ÖNEMLİ: intra_layers parametresini buraya ekliyoruz!
-    model = CLIP(
-        embed_dim,
-        image_resolution,
-        vision_layers,
-        vision_width,
-        vision_patch_size,
-        context_length,
-        vocab_size,
-        transformer_width,
-        transformer_heads,
-        transformer_layers,
-        intra_layers=intra_num_hidden_layers  # <--- BURASI KRİTİK
-    ).float()
+    def forward(self, images):
+        # CLIP'ten özellikleri çıkar
+        # Dikkat: RSICCformer 'sequence' (yama dizisi) bekliyorsa, 
+        # CLIP'in son katmanındaki pooling öncesi çıktıya ihtiyacınız var.
 
-    # --- 3. Ağırlıkları Yükle ---
-    new_state_dict = {}
-    for k, v in state_dict.items():
-        if k.startswith("clip."):
-            new_key = k[5:] 
-            new_state_dict[new_key] = v
-            
-    # strict=False kullanıyoruz çünkü text encoder ağırlıklarını yüklemesek de olur
-    # ama visual encoder eksiksiz yüklenecektir.
-    msg = model.load_state_dict(new_state_dict, strict=False)
-    print("Yükleme Durumu:", msg)
-    
-    model.to(device)
-    model.eval()
-    
-    # Görsel encoder'ı döndür
-    return model.visual
+        with torch.no_grad(): # Eğer freeze ise
+            features = self.visual_encoder(images) 
+            # features shape örneği: [Batch, 197, 768] (ViT için)
+
+        # Boyut dönüşümü yap
+        out = self.projection(features) 
+        # out shape: [Batch, 197, target_dim]
+
+        return out
 
 def train(
     args,
@@ -231,11 +159,6 @@ def train(
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
-    
-
-    
-
     for i, (img_pairs, caps, caplens) in enumerate(train_loader):
         #         if i == 20:
         #             break
@@ -268,6 +191,11 @@ def train(
         # rsformer image encoder 
         #imgs_A = encoder_image(imgs_A)  # imgs_A: [batch_size,1024, 14, 14]
         #imgs_B = encoder_image(imgs_B)  # batch time = 0.35
+
+        #imgs_A = encoder_image(imgs_A)  # imgs_A: [batch_size,1024, 14, 14]
+        #imgs_B = encoder_image(imgs_B)  # batch time = 0.35
+
+        """En son birlikte yaptığımız deneme
         # Convert a single tensor image (C,H,W) in range [0,1] or [0,255] to PIL
         
         # --new--
@@ -296,9 +224,10 @@ def train(
         img_B_input = img_B_input_5d.view(b * t, c, h, w)
         
         imgs_B_features = clip_encoder_image(img_B_input, video_frame=2)
-        imgs_B = imgs_B_features[:, 0, :] # İlk kareyi al
+        imgs_B = imgs_B_features[:, 0, :] # İlk kareyi al"""
 
-        """to_pil = transforms.ToPILImage()
+        """berkayın yapıtığı implement        
+        to_pil = transforms.ToPILImage()
 
         # clip image encoder 
         for imgA,imgB in zip(clip_imgs_A,clip_imgs_B):
@@ -636,20 +565,19 @@ def main(args, meteor_output=None):
     # --- KULLANIM ---
     # Eğitimde kullandığınız intra layer sayısını (args.intra_num_hidden_layers) buraya yazın.
     # Kodlarınızda varsayılan değer 9 görünüyordu.
-    clip_encoder_image = load_custom_visual_encoder(
-        "/content/RSICC/pytorch_model.bin.19", 
-        device, 
-        intra_num_hidden_layers=9
-    )
+
+    Clip_visual_encoder_module = CLIPVisualEncoder()
+
+    clip_encoder_image = Clip_visual_encoder_module.visual_encoder
     #clip_encoder_image = load_trained_visual_encoder("/content/RSICC/pytorch_model.bin.0", device)
     #print("Visual Encoder başarıyla ayıklandı.")
 
-    clip_encoder_optimizer, clip_encoder_scheduler, clip_encoder_image = prep_optimizer(
+    """clip_encoder_optimizer, clip_encoder_scheduler, clip_encoder_image = prep_optimizer(
             args,
             clip_encoder_image,
             device,
             num_train_optimization_steps
-        )
+        )"""
 
     # Epochs
     for epoch in range(start_epoch, args.epochs):
@@ -675,9 +603,9 @@ def main(args, meteor_output=None):
             decoder=decoder,
             criterion=criterion,
             encoder_image_optimizer=encoder_image_optimizer,
-            clip_encoder_optimizer=clip_encoder_optimizer,
+            #clip_encoder_optimizer=clip_encoder_optimizer,
             encoder_image_lr_scheduler=encoder_image_lr_scheduler,
-            clip_encoder_scheduler=clip_encoder_scheduler,
+            #clip_encoder_scheduler=clip_encoder_scheduler,
             encoder_feat_optimizer=encoder_feat_optimizer,
             encoder_feat_lr_scheduler=encoder_feat_lr_scheduler,
             decoder_optimizer=decoder_optimizer,
@@ -822,6 +750,9 @@ if __name__ == "__main__":
     parser.add_argument("--decoder_n_layers", type=int, default=1)
     parser.add_argument("--feature_dim_de", type=int, default=1024)
     parser.add_argument("--dropout", type=float, default=0.5, help="dropout")
+
+    parser.add_argument("--cross_model", default="cross-base", type=str, required=False, help="Cross module")
+    parser.add_argument("--decoder_model", default="decoder-base", type=str, required=False, help="Decoder module")
 
     # Training parameters
     parser.add_argument(
