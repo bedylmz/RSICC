@@ -471,13 +471,13 @@ def main(args, meteor_output=None):
         encoder_feat = MCCFormers_diff_as_Q(
             feature_dim=encoder_image_dim,
             dropout=0.5,
-            h=50, # 14 ten 50 çıkardım hadi bakalım demet akalın
-            w=50, # yukardakinin aynısı
+            h=100, # 14 ten 100 çıkardım hadi bakalım demet akalın
+            w=100, # yukardakinin aynısı
             d_model=512,
             n_head=args.n_heads,
             n_layers=args.n_layers,
         )
-        
+
 
     # Decoder
     args.feature_dim_de = 1024 # 当有concat是1024,否则为512
