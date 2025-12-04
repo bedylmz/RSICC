@@ -748,8 +748,10 @@ if __name__ == "__main__":
     parser.add_argument("--feature_dim_de", type=int, default=1024)
     parser.add_argument("--dropout", type=float, default=0.5, help="dropout")
 
+    #params for CLIP4IDC implementation
     parser.add_argument("--cross_model", default="cross-base", type=str, required=False, help="Cross module")
     parser.add_argument("--decoder_model", default="decoder-base", type=str, required=False, help="Decoder module")
+    parser.add_argument("--task_type", default="retrieval", type=str, help="Point the task `retrieval` to finetune.")
 
     # Training parameters
     parser.add_argument(
