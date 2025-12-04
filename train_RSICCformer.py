@@ -79,7 +79,7 @@ class CLIPVisualEncoder(nn.Module):
         #self.clip_model.load_state_dict(model_state_dict['model_state_dict']) # Key'lere dikkat
 
         # Sadece görsel kısmı al (örneğin visual transformer)
-        self.visual_encoder = self.clip_model.visual 
+        self.visual_encoder = self.clip_model.clip.visual 
 
         # Modelin orijinal çıktı boyutunu al (örn: 768)
         clip_out_dim = self.visual_encoder.output_dim 
