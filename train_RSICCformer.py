@@ -73,6 +73,7 @@ class CLIPVisualEncoder(nn.Module):
         model_state_dict = torch.load(clip_model_path, map_location="cpu")
         self.clip_model = CLIP4IDCPreTrainedModel.from_pretrained(
             args.cross_model,
+            args.decoder_model,
             cache_dir=cache_dir,
             state_dict=model_state_dict,
             task_config=args,
