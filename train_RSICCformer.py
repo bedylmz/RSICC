@@ -68,6 +68,9 @@ class CLIPVisualEncoder(nn.Module):
                 "distributed",
             )
         )
+
+        # 2. Checkpoint'i yükleyin
+        model_state_dict = torch.load(clip_model_path, map_location="cpu")
         self.clip_model = CLIP4IDCPreTrainedModel.from_pretrained(
             args.cross_model,
             cache_dir=cache_dir,
@@ -76,8 +79,8 @@ class CLIPVisualEncoder(nn.Module):
         )
         
         # 2. Checkpoint'i yükleyin
-        model_state_dict = torch.load(clip_model_path, map_location="cpu")
-        self.clip_model.load_state_dict(model_state_dict['model_state_dict']) # Key'lere dikkat
+        #model_state_dict = torch.load(clip_model_path, map_location="cpu")
+        #self.clip_model.load_state_dict(model_state_dict['model_state_dict']) # Key'lere dikkat
 
         # Sadece görsel kısmı al (örneğin visual transformer)
         self.visual_encoder = self.clip_model.visual 
