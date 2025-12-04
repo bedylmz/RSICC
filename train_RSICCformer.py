@@ -63,9 +63,7 @@ class CLIPVisualEncoder(nn.Module):
         # 1. Sizin kütüphanenizden CLIP modelini başlatın
         # Prepare model
         cache_dir = (
-            args.cache_dir
-            if args.cache_dir
-            else os.path.join(
+            os.path.join(
                 str(PYTORCH_PRETRAINED_BERT_CACHE),
                 "distributed",
             )
