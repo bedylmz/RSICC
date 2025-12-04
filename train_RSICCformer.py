@@ -53,7 +53,7 @@ def print_with_json(text):
     text_terminal += str(text) + "\n"
 
 
-from CLIP_modules.modeling import CLIP4IDCPreTrainedModel
+from CLIP_modules.modeling import CLIP4IDC
 
 from CLIP_modules.file_utils import PYTORCH_PRETRAINED_BERT_CACHE
 
@@ -71,9 +71,8 @@ class CLIPVisualEncoder(nn.Module):
 
         # 2. Checkpoint'i yükleyin
         model_state_dict = torch.load(clip_model_path, map_location="cpu")
-        self.clip_model = CLIP4IDCPreTrainedModel.from_pretrained(
+        self.clip_model = CLIP4IDC.from_pretrained(
             args.cross_model,
-            args.decoder_model,
             cache_dir=cache_dir,
             state_dict=model_state_dict,
             task_config=args,
