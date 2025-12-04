@@ -104,6 +104,8 @@ class CLIPVisualEncoder(nn.Module):
 
         features = features[:, 1:, :]
 
+        print("Feature Boyutu: "+str(features.shape()))
+
         # Boyut dönüşümü yap
         out = self.projection(features) 
         # out shape: [Batch, 197, target_dim]
