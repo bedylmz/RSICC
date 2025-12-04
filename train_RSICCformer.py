@@ -62,12 +62,7 @@ class CLIPVisualEncoder(nn.Module):
         super().__init__()
         # 1. Sizin kütüphanenizden CLIP modelini başlatın
         # Prepare model
-        cache_dir = (
-            os.path.join(
-                str(PYTORCH_PRETRAINED_BERT_CACHE),
-                "distributed",
-            )
-        )
+        cache_dir = os.path.join(str(PYTORCH_PRETRAINED_BERT_CACHE),"distributed")
 
         # 2. Checkpoint'i yükleyin
         model_state_dict = torch.load(clip_model_path, map_location="cpu")
