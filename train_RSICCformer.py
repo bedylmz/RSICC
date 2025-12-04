@@ -101,6 +101,9 @@ class CLIPVisualEncoder(nn.Module):
             features = self.visual_encoder(images) 
             # features shape örneği: [Batch, 197, 768] (ViT için)
 
+
+        features = features[:, 1:, :]
+
         # Boyut dönüşümü yap
         out = self.projection(features) 
         # out shape: [Batch, 197, target_dim]
