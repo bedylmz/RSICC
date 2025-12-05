@@ -115,35 +115,31 @@ class CLIPVisualEncoder(nn.Module):
     
     def forward(self, x):
         with torch.no_grad():
-            # 1. CLIP'ten özellikleri al: [Batch, 50, 768] (ViT-B/32 için)
-            features = self.visual_encoder(x) 
+            # [Batch, 50, 768]
+            features = self.visual_encoder(x)
             
-        # 2. CLS Token'i at (Sadece görsel yamalar kalsın)
-        # Shape: [Batch, 49, 768]
-        features = features[:, 1:, :] 
+        # 1. CLS tokeni at [Batch, 49, 768]
+        features = features[:, 1:, :]
         
-        # 3. Kare formata geri döndür (7x7)
-        # Shape: [Batch, 7, 7, 768]
+        # 2. Kareye çevir (7x7) ve Kanalları başa al
+        # Shape: [Batch, 768, 7, 7]
         batch_size = features.shape[0]
-        dim = features.shape[2]
-        side = int(features.shape[1] ** 0.5) # 49'un karekökü 7
-        features = features.view(batch_size, side, side, dim)
+        side = int(features.shape[1] ** 0.5) # 7
+        features = features.view(batch_size, side, side, -1).permute(0, 3, 1, 2)
         
-        # 4. Interpolasyon için kanalları başa al: [Batch, 768, 7, 7]
-        features = features.permute(0, 3, 1, 2)
-        
-        # 5. Resmi 14x14'e büyüt (Upsample) -> RSICCformer ResNet boyutunu sever
+        # 3. RSICCformer için 14x14'e büyüt (Upsample)
+        # Shape: [Batch, 768, 14, 14]
         features = torch.nn.functional.interpolate(features, size=(14, 14), mode='bilinear', align_corners=False)
-        # Yeni Shape: [Batch, 768, 14, 14]
         
-        # 6. Tekrar düzleştir (Flatten): [Batch, 768, 196]
-        features = features.flatten(2)
+        # 4. Projection için kanalları sona al: [Batch, 14, 14, 768]
+        features = features.permute(0, 2, 3, 1)
         
-        # 7. Kanalları sona al (Transformer formatı): [Batch, 196, 768]
-        features = features.transpose(1, 2)
-        
-        # 8. Son Boyut Eşitleme (Projection) -> 1024'e çıkar
+        # 5. Boyutu 1024 (veya target_dim) yap
         out = self.projection(features)
+        
+        # 6. KRİTİK ADIM: Tekrar kanalları başa al: [Batch, 1024, 14, 14]
+        # RSICCformer bu formatı (B, C, H, W) bekliyor!
+        out = out.permute(0, 3, 1, 2)
         
         return out
 
