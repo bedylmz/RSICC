@@ -85,6 +85,9 @@ class CLIPVisualEncoder(nn.Module):
         # Modeli Float32 (Tam Hassasiyet) moduna zorla
         self.visual_encoder.float()
 
+        # --- YENİ DÜZELTME (BUNU EKLEYİN) ---
+        self.visual_encoder.cuda()
+
         # Modelin orijinal çıktı boyutunu al (örn: 768)
         clip_out_dim = self.visual_encoder.output_dim 
 
