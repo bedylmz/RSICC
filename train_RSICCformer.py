@@ -121,31 +121,65 @@ class CLIPVisualEncoder(nn.Module):
         return out"""
     
     def forward(self, x):
-        with torch.no_grad():
-            # [Batch, 50, 768]
-            features = self.visual_encoder(x)
-            
-        # 1. CLS tokeni at [Batch, 49, 768]
-        features = features[:, 1:, :]
+        # x shape: [Batch, 3, 224, 224]
         
-        # 2. Kareye çevir (7x7) ve Kanalları başa al
+        # --- CLIP'in içindeki forward akışını MANUEL yapıyoruz ---
+        # Böylece module_clip.py line 508'deki hatadan kaçınıyoruz.
+        
+        with torch.no_grad():
+            # 1. Conv1 (Patch Embedding)
+            # Çıktı: [Batch, 768, 7, 7] (ViT-B/32 için)
+            x = self.visual_encoder.conv1(x) 
+            
+            # 2. Flatten ve Transpose
+            # Çıktı: [Batch, 49, 768]
+            x = x.reshape(x.shape[0], x.shape[1], -1) 
+            x = x.permute(0, 2, 1) 
+            
+            # 3. Class Embedding ve Positional Embedding Ekleme
+            # class_embedding shape: [768] -> [1, 1, 768] -> [Batch, 1, 768]
+            class_embedding = self.visual_encoder.class_embedding.to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device)
+            
+            # x shape: [Batch, 50, 768] (49 patch + 1 class)
+            x = torch.cat([class_embedding, x], dim=1) 
+            x = x + self.visual_encoder.positional_embedding.to(x.dtype)
+            
+            # 4. Layer Norm (Pre-Transformer)
+            x = self.visual_encoder.ln_pre(x)
+            
+            # 5. Transformer Katmanları
+            x = x.permute(1, 0, 2)  # [50, Batch, 768] (Transformer NLD formatı ister)
+            x = self.visual_encoder.transformer(x)
+            x = x.permute(1, 0, 2)  # [Batch, 50, 768] (Geri çevir)
+            
+            # 6. Layer Norm (Post-Transformer)
+            x = self.visual_encoder.ln_post(x)
+            
+            # --- Buraya kadar özellikler çıkarıldı ---
+
+        # --- RSICCformer İçin Şekillendirme ---
+        
+        # 7. CLS Tokeni at (İlk tokeni çıkar)
+        # Geriye [Batch, 49, 768] kalır
+        features = x[:, 1:, :] 
+        
+        # 8. Kare formata geri döndür
         # Shape: [Batch, 768, 7, 7]
         batch_size = features.shape[0]
         side = int(features.shape[1] ** 0.5) # 7
-        features = features.view(batch_size, side, side, -1).permute(0, 3, 1, 2)
+        features = features.permute(0, 2, 1).view(batch_size, -1, side, side)
         
-        # 3. RSICCformer için 14x14'e büyüt (Upsample)
-        # Shape: [Batch, 768, 14, 14]
+        # 9. Interpolasyon (14x14'e büyüt) -> RSICCformer ResNet boyutu sever
         features = torch.nn.functional.interpolate(features, size=(14, 14), mode='bilinear', align_corners=False)
-        
-        # 4. Projection için kanalları sona al: [Batch, 14, 14, 768]
+        # Shape: [Batch, 768, 14, 14]
+
+        # 10. Projection (Boyut Eşitleme)
+        # Linear katman son boyutta çalışır, bu yüzden kanalları sona al: [Batch, 14, 14, 768]
         features = features.permute(0, 2, 3, 1)
-        
-        # 5. Boyutu 1024 (veya target_dim) yap
         out = self.projection(features)
         
-        # 6. KRİTİK ADIM: Tekrar kanalları başa al: [Batch, 1024, 14, 14]
-        # RSICCformer bu formatı (B, C, H, W) bekliyor!
+        # 11. Son Çıktı Formatı: [Batch, 1024, 14, 14]
+        # Kanalları tekrar başa al
         out = out.permute(0, 3, 1, 2)
         
         return out
