@@ -92,7 +92,7 @@ class CLIPVisualEncoder(nn.Module):
         clip_out_dim = self.visual_encoder.output_dim 
 
         # 3. Boyut Eşitleyici (Projection Layer)
-        self.projection = nn.Linear(clip_out_dim, target_dim)
+        self.projection = nn.Linear(768, target_dim) # 768 olmasının sebebi custom forward yapmamız
         self.projection.float()
 
         # 4. İsteğe bağlı: CLIP encoder'ı dondur (freeze) 
