@@ -81,6 +81,10 @@ class CLIPVisualEncoder(nn.Module):
         # Sadece görsel kısmı al (örneğin visual transformer)
         self.visual_encoder = self.clip_model.clip.visual 
 
+        # --- ÇÖZÜM BURADA ---
+        # Modeli Float32 (Tam Hassasiyet) moduna zorla
+        self.visual_encoder.float()
+
         # Modelin orijinal çıktı boyutunu al (örn: 768)
         clip_out_dim = self.visual_encoder.output_dim 
 
