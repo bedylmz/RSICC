@@ -93,6 +93,7 @@ class CLIPVisualEncoder(nn.Module):
 
         # 3. Boyut Eşitleyici (Projection Layer)
         self.projection = nn.Linear(clip_out_dim, target_dim)
+        self.projection.float()
 
         # 4. İsteğe bağlı: CLIP encoder'ı dondur (freeze) 
         # Eğer sadece feature extractor olacaksa dondurun, eğitilecekse açık bırakın.
