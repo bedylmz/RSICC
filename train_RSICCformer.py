@@ -644,7 +644,11 @@ def main(args, meteor_output=None):
 
     Clip_visual_encoder_module = CLIPVisualEncoder("/content/RSICC/ckpts/pytorch_model.bin.0",1024)
 
-    clip_encoder_image = Clip_visual_encoder_module.visual_encoder
+    # Wrapper'ın kendisini değişkene ata!
+    clip_encoder_image = Clip_visual_encoder_module 
+
+    # GPU'ya taşıdığınızdan emin olun (Sınıf içinde yaptıysanız bile garanti olsun)
+    clip_encoder_image = clip_encoder_image.cuda()
     #clip_encoder_image = load_trained_visual_encoder("/content/RSICC/pytorch_model.bin.0", device)
     #print("Visual Encoder başarıyla ayıklandı.")
 
