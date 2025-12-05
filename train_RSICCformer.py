@@ -92,6 +92,7 @@ class CLIPVisualEncoder(nn.Module):
         for param in self.visual_encoder.parameters():
             param.requires_grad = False # veya True
 
+    """Old basic forward
     def forward(self, images):
         # CLIP'ten özellikleri çıkar
         # Dikkat: RSICCformer 'sequence' (yama dizisi) bekliyorsa, 
@@ -110,6 +111,40 @@ class CLIPVisualEncoder(nn.Module):
         out = self.projection(features) 
         # out shape: [Batch, 197, target_dim]
 
+        return out"""
+    
+    def forward(self, x):
+        with torch.no_grad():
+            # 1. CLIP'ten özellikleri al: [Batch, 50, 768] (ViT-B/32 için)
+            features = self.visual_encoder(x) 
+            
+        # 2. CLS Token'i at (Sadece görsel yamalar kalsın)
+        # Shape: [Batch, 49, 768]
+        features = features[:, 1:, :] 
+        
+        # 3. Kare formata geri döndür (7x7)
+        # Shape: [Batch, 7, 7, 768]
+        batch_size = features.shape[0]
+        dim = features.shape[2]
+        side = int(features.shape[1] ** 0.5) # 49'un karekökü 7
+        features = features.view(batch_size, side, side, dim)
+        
+        # 4. Interpolasyon için kanalları başa al: [Batch, 768, 7, 7]
+        features = features.permute(0, 3, 1, 2)
+        
+        # 5. Resmi 14x14'e büyüt (Upsample) -> RSICCformer ResNet boyutunu sever
+        features = torch.nn.functional.interpolate(features, size=(14, 14), mode='bilinear', align_corners=False)
+        # Yeni Shape: [Batch, 768, 14, 14]
+        
+        # 6. Tekrar düzleştir (Flatten): [Batch, 768, 196]
+        features = features.flatten(2)
+        
+        # 7. Kanalları sona al (Transformer formatı): [Batch, 196, 768]
+        features = features.transpose(1, 2)
+        
+        # 8. Son Boyut Eşitleme (Projection) -> 1024'e çıkar
+        out = self.projection(features)
+        
         return out
 
 def train(
@@ -476,8 +511,8 @@ def main(args, meteor_output=None):
         encoder_feat = MCCFormers_diff_as_Q(
             feature_dim=encoder_image_dim,
             dropout=0.5,
-            h=100, # 14 ten 100 çıkardım hadi bakalım demet akalın
-            w=100, # yukardakinin aynısı
+            h=300, # 14 ten 300 çıkardım hadi bakalım demet akalın
+            w=300, # yukardakinin aynısı
             d_model=512,
             n_head=args.n_heads,
             n_layers=args.n_layers,
