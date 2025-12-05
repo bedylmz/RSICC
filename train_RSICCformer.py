@@ -217,8 +217,8 @@ def train(
         imgs_A = img_pairs[:, 0, :, :, :]
         imgs_B = img_pairs[:, 1, :, :, :]
 
-        clip_imgs_A = img_pairs[:, 0, :, :, :]
-        clip_imgs_B = img_pairs[:, 1, :, :, :]
+        clip_imgs_A = clip_encoder_image(imgs_A)
+        clip_imgs_B = clip_encoder_image(imgs_B)
         clip_encoded = []
 
         # imgs_C = img_pairs[:, 2, :, :, :]
@@ -295,8 +295,8 @@ def train(
         NewimgB = clip_encoded[:, 1, :, :, :]"""
 
         fused_feat = encoder_feat(
-            imgs_A,
-            imgs_B,
+            clip_imgs_A,
+            clip_imgs_B,
             #clip_encoded
         ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
 
