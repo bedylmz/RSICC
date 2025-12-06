@@ -58,7 +58,7 @@ from CLIP_modules.modeling import CLIP4IDC
 from CLIP_modules.file_utils import PYTORCH_PRETRAINED_BERT_CACHE
 
 class CLIPVisualEncoder(nn.Module):
-    def __init__(self, clip_model_path, target_dim):
+    def __init__(self, clip_model_path, target_dim, decoder):
         super().__init__()
         # 1. Sizin kütüphanenizden CLIP modelini başlatın
         # Prepare model
@@ -585,6 +585,17 @@ def main(args, meteor_output=None):
 
     # GPU'ya taşıdığınızdan emin olun (Sınıf içinde yaptıysanız bile garanti olsun)
     clip_encoder_image = clip_encoder_image.cuda()
+
+    with torch.no_grad():
+        # CLIP Token Embedding ağırlıklarını al
+        # clip_weights shape: [49408, 512] (ViT-B/32 için)
+        clip_weights = clip_encoder_image.clip_model.clip.token_embedding.weight 
+        
+        # Decoder'a kopyala
+        decoder.vocab_embedding.weight.data.copy_(clip_weights)
+        
+        # İsterseniz dondurun (Freeze)
+        # decoder.vocab_embedding.weight.requires_grad = False
     #clip_encoder_image = load_trained_visual_encoder("/content/RSICC/pytorch_model.bin.0", device)
     #print("Visual Encoder başarıyla ayıklandı.")
 
