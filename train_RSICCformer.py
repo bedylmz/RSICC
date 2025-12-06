@@ -566,7 +566,7 @@ def main(args, meteor_output=None):
     # Eğitimde kullandığınız intra layer sayısını (args.intra_num_hidden_layers) buraya yazın.
     # Kodlarınızda varsayılan değer 9 görünüyordu.
 
-    Clip_visual_encoder_module = CLIPVisualEncoder("/content/RSICC/ckpts/pytorch_model.bin.0",1024)
+    Clip_visual_encoder_module = CLIPVisualEncoder(args.clip_path,1024)
 
     # Wrapper'ın kendisini değişkene ata!
     clip_encoder_image = Clip_visual_encoder_module
@@ -760,6 +760,7 @@ if __name__ == "__main__":
     parser.add_argument("--decoder_model", default="decoder-base", type=str, required=False, help="Decoder module")
     parser.add_argument("--task_type", default="retrieval", type=str, help="Point the task `retrieval` to finetune.")
     parser.add_argument("--intra_num_hidden_layers", type=int, default=9, help="Layer NO. of intra module")
+    parser.add_argument("--clip_path ", type=str, default="/content/RSICC/ckpts/pytorch_model.bin.0", help="Layer NO. of intra module")
 
     # Training parameters
     parser.add_argument(
