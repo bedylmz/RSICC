@@ -217,7 +217,7 @@ def train(
 
     #encoder_image.train()
     #encoder_image2.train()
-    clip_encoder_image.eval()
+    clip_encoder_image.train()
     encoder_feat.train()
     decoder.train()  # train mode (dropout and batchnorm is used)
 
@@ -581,10 +581,12 @@ def main(args, meteor_output=None):
     
     ])
 
-    clip_encoder_image.train()
 
     # GPU'ya taşıdığınızdan emin olun (Sınıf içinde yaptıysanız bile garanti olsun)
     clip_encoder_image = clip_encoder_image.cuda()
+
+    clip_encoder_image.train()
+    
 
     """ with torch.no_grad():
         # CLIP Token Embedding ağırlıklarını al

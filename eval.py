@@ -81,9 +81,12 @@ def evaluate_transformer(args,encoder_image,encoder_feat,decoder, clip_encoder_i
     """
     beam_size = args.beam_size
     Caption_End = False
-    # DataLoader
     loader = torch.utils.data.DataLoader(
-        CaptionDataset(args.data_folder, args.data_name, args.Split, transform=transforms.Compose([normalize])),
+        CaptionDataset(args.data_folder, args.data_name, args.Split, 
+                       transform=transforms.Compose([
+                           transforms.Resize((224, 224)), # <-- BUNU EKLEYİN
+                           normalize
+                       ])),
         batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
 
     # Lists to store references (true captions), and hypothesis (prediction) for each image
