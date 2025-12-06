@@ -257,85 +257,10 @@ def train(
 
         clip_imgs_A = clip_encoder_image(imgs_A)
         clip_imgs_B = clip_encoder_image(imgs_B)
-        clip_encoded = []
-
-        # imgs_C = img_pairs[:, 2, :, :, :]
-        # sem_A = img_pairs[:, 2, :, :, :]
-        # sem_B = img_pairs[:, 3, :, :, :]
-
-        # rsformer image encoder 
-        #imgs_A = encoder_image(imgs_A)  # imgs_A: [batch_size,1024, 14, 14]
-        #imgs_B = encoder_image(imgs_B)  # batch time = 0.35
-
-        #imgs_A = encoder_image(imgs_A)  # imgs_A: [batch_size,1024, 14, 14]
-        #imgs_B = encoder_image(imgs_B)  # batch time = 0.35
-
-        """En son birlikte yaptığımız deneme
-        # Convert a single tensor image (C,H,W) in range [0,1] or [0,255] to PIL
-        
-        # --new--
-        # Tekil görüntüleri al: [Batch, 3, 224, 224]
-        img_A_single = img_pairs[:, 0, :, :, :]
-        img_B_single = img_pairs[:, 1, :, :, :]
-
-        # YÖNTEM: Concatenate + View (Düzleştirme)
-        
-        # 1. A Resmini Hazırla
-        # [Batch, 2, 3, 224, 224] oluşturuyoruz (Sizin yaptığınız kısım)
-        img_A_input_5d = torch.cat([img_A_single.unsqueeze(1), img_A_single.unsqueeze(1)], dim=1)
-        
-        # HATA ÇÖZÜMÜ: 5D -> 4D'ye çeviriyoruz ([Batch * 2, 3, 224, 224])
-        # Model bunu "52 tane resim" olarak görecek, içeride "26 tane 2 karelik video" olduğunu video_frame=2 ile anlayacak.
-        b, t, c, h, w = img_A_input_5d.shape
-        img_A_input = img_A_input_5d.view(b * t, c, h, w) 
-        
-        imgs_A_features = clip_encoder_image(img_A_input, video_frame=2)
-        imgs_A = imgs_A_features[:, 0, :] # İlk kareyi al
-
-        # 2. B Resmini Hazırla
-        img_B_input_5d = torch.cat([img_B_single.unsqueeze(1), img_B_single.unsqueeze(1)], dim=1)
-        
-        # Aynı şekilde düzleştiriyoruz
-        img_B_input = img_B_input_5d.view(b * t, c, h, w)
-        
-        imgs_B_features = clip_encoder_image(img_B_input, video_frame=2)
-        imgs_B = imgs_B_features[:, 0, :] # İlk kareyi al"""
-
-        """berkayın yapıtığı implement        
-        to_pil = transforms.ToPILImage()
-
-        # clip image encoder 
-        for imgA,imgB in zip(clip_imgs_A,clip_imgs_B):
-            # Clamp and convert to PIL
-            imgA_pil = to_pil(imgA.cpu().clamp(0, 1))
-            imgB_pil = to_pil(imgB.cpu().clamp(0, 1))
-
-            # Now pass PIL images to your CLIP encode function
-            encoded = model_arrange.encode_image(clip_encoder_image, imgA_pil, imgB_pil, device)
-            clip_encoded.append(encoded)
-
-        # stack along batch dimension
-        clip_encoded = torch.stack(clip_encoded).to(device)  # shape [B, 2, 7, 7, 768]
-        print("DEBUG: type(clip_encoded) =", type(clip_encoded))
-        if isinstance(clip_encoded, torch.Tensor):
-            print("DEBUG: clip_encoded.shape =", clip_encoded.shape)
-        elif isinstance(clip_encoded, list):
-            print("DEBUG: len(clip_encoded) =", len(clip_encoded))
-            if len(clip_encoded) > 0 and isinstance(clip_encoded[0], torch.Tensor):
-                print("DEBUG: clip_encoded[0].shape =", clip_encoded[0].shape)
-
-
-        #clip_encoded = torch.stack(clip_encoded)
-
-        write_debug("clip_encoded", clip_encoded)
-
-        NewimgA = clip_encoded[:, 0, :, :, :]
-        NewimgB = clip_encoded[:, 1, :, :, :]"""
 
         fused_feat = encoder_feat(
             clip_imgs_A,
             clip_imgs_B,
-            #clip_encoded
         ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
 
         scores, caps_sorted, decode_lengths, sort_ind = decoder(fused_feat, caps, caplens)
@@ -548,8 +473,8 @@ def main(args, meteor_output=None):
         encoder_feat = MCCFormers_diff_as_Q(
             feature_dim=encoder_image_dim,
             dropout=0.5,
-            h=300, # 14 ten 300 çıkardım hadi bakalım demet akalın
-            w=300, # yukardakinin aynısı
+            h=14, # 14 ten 14 çıkardım hadi bakalım demet akalın
+            w=14, # yukardakinin aynısı
             d_model=512,
             n_head=args.n_heads,
             n_layers=args.n_layers,
@@ -644,7 +569,7 @@ def main(args, meteor_output=None):
     Clip_visual_encoder_module = CLIPVisualEncoder("/content/RSICC/ckpts/pytorch_model.bin.0",1024)
 
     # Wrapper'ın kendisini değişkene ata!
-    clip_encoder_image = Clip_visual_encoder_module 
+    clip_encoder_image = Clip_visual_encoder_module
 
     # GPU'ya taşıdığınızdan emin olun (Sınıf içinde yaptıysanız bile garanti olsun)
     clip_encoder_image = clip_encoder_image.cuda()
