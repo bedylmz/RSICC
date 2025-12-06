@@ -53,7 +53,7 @@ def save_captions(args, word_map, hypotheses, references):
 def get_key(dict_, value):
   return [k for k, v in dict_.items() if v == value]
 
-def evaluate_transformer(args,encoder_image,encoder_feat,decoder):
+def evaluate_transformer(args,encoder_image,encoder_feat,decoder, clip_encoder_image):
     # Load model
     encoder_image = encoder_image.to(device)
     encoder_image.eval()
@@ -61,6 +61,10 @@ def evaluate_transformer(args,encoder_image,encoder_feat,decoder):
     encoder_feat.eval()
     decoder = decoder.to(device)
     decoder.eval()
+
+    clip_encoder_image.to(device)
+    clip_encoder_image.eval()
+
 
     # Load word map (word2ix)
     word_map_file = os.path.join(args.data_folder, 'WORDMAP_' + args.data_name + '.json')
@@ -110,8 +114,8 @@ def evaluate_transformer(args,encoder_image,encoder_feat,decoder):
             # Encode
             imgs_A = image_pairs[:, 0, :, :, :]
             imgs_B = image_pairs[:, 1, :, :, :]
-            imgs_A = encoder_image(imgs_A)
-            imgs_B = encoder_image(imgs_B)  # encoder_image :[1, 1024,14,14]
+            imgs_A = clip_encoder_image(imgs_A) # encoder_image dan buna çevrildi
+            imgs_B = clip_encoder_image(imgs_B)  # encoder_image :[1, 1024,14,14]
             encoder_out = encoder_feat(imgs_A, imgs_B) # encoder_out: (S, batch, feature_dim)
 
             tgt = torch.zeros(52, k).to(device).to(torch.int64)
