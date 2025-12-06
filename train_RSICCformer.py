@@ -586,7 +586,7 @@ def main(args, meteor_output=None):
     # GPU'ya taşıdığınızdan emin olun (Sınıf içinde yaptıysanız bile garanti olsun)
     clip_encoder_image = clip_encoder_image.cuda()
 
-    with torch.no_grad():
+    """ with torch.no_grad():
         # CLIP Token Embedding ağırlıklarını al
         # clip_weights shape: [49408, 512] (ViT-B/32 için)
         clip_weights = clip_encoder_image.clip_model.clip.token_embedding.weight 
@@ -595,7 +595,7 @@ def main(args, meteor_output=None):
         decoder.vocab_embedding.weight.data.copy_(clip_weights)
         
         # İsterseniz dondurun (Freeze)
-        # decoder.vocab_embedding.weight.requires_grad = False
+        # decoder.vocab_embedding.weight.requires_grad = False"""
     #clip_encoder_image = load_trained_visual_encoder("/content/RSICC/pytorch_model.bin.0", device)
     #print("Visual Encoder başarıyla ayıklandı.")
 
