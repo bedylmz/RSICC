@@ -58,7 +58,7 @@ from CLIP_modules.modeling import CLIP4IDC
 from CLIP_modules.file_utils import PYTORCH_PRETRAINED_BERT_CACHE
 
 class CLIPVisualEncoder(nn.Module):
-    def __init__(self, clip_model_path, target_dim, decoder):
+    def __init__(self, clip_model_path, target_dim):
         super().__init__()
         # 1. Sizin kütüphanenizden CLIP modelini başlatın
         # Prepare model
