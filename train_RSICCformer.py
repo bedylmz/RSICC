@@ -499,7 +499,6 @@ def prep_optimizer(args, model, device, num_train_optimization_steps, coef_lr=1.
 
 
 def main(args, meteor_output=None):
-    print_with_json("bu toplayan modeldir.")
     print_with_json(args)
     global metrics_list
     print_with_json(time.strftime("%m-%d  %H : %M : %S", time.localtime(time.time())))
