@@ -194,7 +194,7 @@ def train(
     decoder,
     criterion,
     encoder_image_optimizer,
-    #clip_encoder_optimizer,
+    clip_encoder_optimizer,
     encoder_image_lr_scheduler,
     #clip_encoder_scheduler,
     encoder_feat_optimizer,
@@ -242,7 +242,7 @@ def train(
         # Back prop.
         decoder_optimizer.zero_grad()
         encoder_feat_optimizer.zero_grad()
-        #clip_encoder_optimizer.zero_grad()
+        clip_encoder_optimizer.zero_grad()
         #encoder_image_optimizer.zero_grad()
 
         # Move to GPU, if available
@@ -296,9 +296,10 @@ def train(
         encoder_feat_lr_scheduler.step()
 
         #encoder_image_optimizer.step()
+
         #encoder_image_lr_scheduler.step()
    
-        #clip_encoder_optimizer.step()
+        clip_encoder_optimizer.step()
 
         #if clip_encoder_scheduler is not None:
         #    clip_encoder_scheduler.step()
@@ -571,6 +572,17 @@ def main(args, meteor_output=None):
     # Wrapper'ın kendisini değişkene ata!
     clip_encoder_image = Clip_visual_encoder_module
 
+    clip_encoder_image_optimizer = torch.optim.Adam([
+    # 1. CLIP Visual Encoder: Çok düşük LR (Örn: 1e-6 veya 5e-6)
+    {'params': clip_encoder_image.visual_encoder.parameters(), 'lr': 1e-6},
+    
+    # 2. Sizin Eklediğiniz Projection Layer: Orta seviye LR (Örn: 1e-4)
+    {'params': clip_encoder_image.projection.parameters(), 'lr': 1e-4},
+    
+    ])
+
+    clip_encoder_image.train()
+
     # GPU'ya taşıdığınızdan emin olun (Sınıf içinde yaptıysanız bile garanti olsun)
     clip_encoder_image = clip_encoder_image.cuda()
     #clip_encoder_image = load_trained_visual_encoder("/content/RSICC/pytorch_model.bin.0", device)
@@ -607,7 +619,7 @@ def main(args, meteor_output=None):
             decoder=decoder,
             criterion=criterion,
             encoder_image_optimizer=encoder_image_optimizer,
-            #clip_encoder_optimizer=clip_encoder_optimizer,
+            clip_encoder_optimizer=clip_encoder_image_optimizer,
             encoder_image_lr_scheduler=encoder_image_lr_scheduler,
             #clip_encoder_scheduler=clip_encoder_scheduler,
             encoder_feat_optimizer=encoder_feat_optimizer,
