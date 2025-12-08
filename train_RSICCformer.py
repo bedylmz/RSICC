@@ -664,6 +664,9 @@ def main(args, meteor_output=None):
             device,
             num_train_optimization_steps
         )"""
+    metrics, nochange_metrics, change_metrics = evaluate_transformer(
+            args, encoder_image=encoder_image,clip_encoder_image=clip_encoder_image, encoder_feat=encoder_feat, decoder=decoder
+        )
     epoch = 0
     save_checkpoint(args, "SecondCC", epoch, epochs_since_improvement, 
                         encoder_image, encoder_feat, decoder, 
