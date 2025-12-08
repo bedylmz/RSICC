@@ -465,7 +465,7 @@ def save_checkpoint(args, data_name, epoch, epochs_since_improvement,
         state['clip_encoder_optimizer'] = clip_encoder_optimizer.state_dict()
 
     # Kayıt Dizini Kontrolü
-    directory = args.savepath
+    directory = args.save_model_path
     if not os.path.exists(directory):
         os.makedirs(directory)
 
@@ -844,6 +844,7 @@ if __name__ == "__main__":
     parser.add_argument("--task_type", default="retrieval", type=str, help="Point the task `retrieval` to finetune.")
     parser.add_argument("--intra_num_hidden_layers", type=int, default=9, help="Layer NO. of intra module")
     parser.add_argument("--clip_path", type=str, default="/content/RSICC/ckpts/pytorch_model.bin.0", help="Layer NO. of intra module")
+    parser.add_argument("--save_model_path", type=str, default="/content/RSICC/ckpts", help="Layer NO. of intra module")
 
     # Training parameters
     parser.add_argument(
