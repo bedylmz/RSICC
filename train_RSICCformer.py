@@ -423,6 +423,63 @@ def prep_optimizer(args, model, device, num_train_optimization_steps, coef_lr=1.
     model.to(device)
     return optimizer, scheduler, model
 
+def save_checkpoint(args, data_name, epoch, epochs_since_improvement, 
+                             encoder_image, encoder_feat, decoder, 
+                             encoder_image_optimizer, encoder_feat_optimizer, decoder_optimizer,
+                             metrics, is_best, clip_encoder_image, clip_encoder_optimizer=None):
+    import torch
+    
+    """
+    Model checkpoint'ini kaydeder.
+    
+    Önemli: clip_encoder_image (CustomCLIPVisualEncoder) içindeki 
+    hem visual_encoder hem de projection katmanlarını tek seferde kaydeder.
+    """
+    state = {
+        'epoch': epoch,
+        'epochs_since_improvement': epochs_since_improvement,
+        'metrics': metrics,
+        
+        # --- Modeller ---
+        # MCCFormers Feature Encoder
+        'encoder_feat': encoder_feat.state_dict(),
+        # Transformer Decoder
+        'decoder': decoder.state_dict(),
+        # BİZİM İÇİN EN ÖNEMLİ KISIM:
+        # Wrapper sınıfının state_dict'i hem CLIP ağırlıklarını hem Projection katmanını içerir.
+        'clip_encoder_image': clip_encoder_image.state_dict(),
+        
+        # --- Optimizerlar ---
+        'encoder_feat_optimizer': encoder_feat_optimizer.state_dict(),
+        'decoder_optimizer': decoder_optimizer.state_dict(),
+    }
+
+    # Eski ResNet encoder varsa (Opsiyonel)
+    if encoder_image is not None:
+        state['encoder_image'] = encoder_image.state_dict()
+    if encoder_image_optimizer is not None:
+        state['encoder_image_optimizer'] = encoder_image_optimizer.state_dict()
+
+    # CLIP Optimizer (Eğer gönderildiyse - Ki gönderilmeli!)
+    if clip_encoder_optimizer is not None:
+        state['clip_encoder_optimizer'] = clip_encoder_optimizer.state_dict()
+
+    # Kayıt Dizini Kontrolü
+    directory = args.savepath
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
+    # 1. En Son Checkpoint'i Kaydet (Her epoch'ta üzerine yazar)
+    filename = os.path.join(directory, 'checkpoint_' + data_name + '.pth.tar')
+    torch.save(state, filename)
+
+    # 2. Eğer En İyi Model ise Kopyasını "BEST" Olarak Sakla
+    if is_best:
+        best_filename = os.path.join(directory, 'BEST_checkpoint_' + data_name + '.pth.tar')
+        torch.save(state, best_filename)
+        print(f"[*] En iyi model kaydedildi: {best_filename}")
+    else:
+        print(f"[*] Checkpoint kaydedildi: {filename}")
 
 def main(args, meteor_output=None):
     print_with_json(args)
@@ -608,6 +665,14 @@ def main(args, meteor_output=None):
             num_train_optimization_steps
         )"""
 
+    save_checkpoint(args, "SecondCC", epoch, epochs_since_improvement, 
+                        encoder_image, encoder_feat, decoder, 
+                        encoder_image_optimizer, encoder_feat_optimizer, decoder_optimizer,
+                        metrics, is_best, clip_encoder_image, clip_encoder_image_optimizer)
+    print("-------------------------Saved------------------------")
+    
+
+
     # Epochs
     for epoch in range(start_epoch, args.epochs):
 
@@ -685,21 +750,11 @@ def main(args, meteor_output=None):
         checkpoint_name = (
             args.encoder_image_model + "_" + args.encoder_feat + "_" + args.decoder
         )  # _tengxun_aggregation
-        """save_checkpoint_toplayan(
-            args,
-            checkpoint_name,
-            epoch,
-            epochs_since_improvement,
-            encoder_image,
-            encoder_feat,
-            decoder,
-            encoder_image_optimizer,
-            encoder_feat_optimizer,
-            decoder_optimizer,
-            metrics,
-            is_best,
-            clip_encoder_image
-        )"""
+        save_checkpoint(args, "SecondCC", epoch, epochs_since_improvement, 
+                        encoder_image, encoder_feat, decoder, 
+                        encoder_image_optimizer, encoder_feat_optimizer, decoder_optimizer,
+                        metrics, is_best, clip_encoder_image, clip_encoder_image_optimizer)
+
     train_model_sonuc_map["losses"] = losses_output
     train_model_sonuc_map["avg_losses"] = AVG_losses_output
     train_model_sonuc_map["top5_acc"] = top5_accuracy_output
