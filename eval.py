@@ -270,7 +270,7 @@ def evaluate_transformer(args,encoder_image,encoder_feat,decoder, clip_encoder_i
     metrics = get_eval_score(references, hypotheses)
 
 
-    return metrics
+    return metrics, nochange_metric, change_metric
 
 
 if __name__ == '__main__':
