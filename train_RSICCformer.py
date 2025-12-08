@@ -426,7 +426,7 @@ def prep_optimizer(args, model, device, num_train_optimization_steps, coef_lr=1.
 def save_checkpoint(args, data_name, epoch, epochs_since_improvement, 
                              encoder_image, encoder_feat, decoder, 
                              encoder_image_optimizer, encoder_feat_optimizer, decoder_optimizer,
-                             metrics, is_best, clip_encoder_image, clip_encoder_optimizer=None):
+                             clip_encoder_image, clip_encoder_optimizer=None):
     import torch
     
     """
@@ -438,7 +438,6 @@ def save_checkpoint(args, data_name, epoch, epochs_since_improvement,
     state = {
         'epoch': epoch,
         'epochs_since_improvement': epochs_since_improvement,
-        'metrics': metrics,
         
         # --- Modeller ---
         # MCCFormers Feature Encoder
@@ -473,13 +472,6 @@ def save_checkpoint(args, data_name, epoch, epochs_since_improvement,
     filename = os.path.join(directory, 'checkpoint_' + data_name + '.pth.tar')
     torch.save(state, filename)
 
-    # 2. Eğer En İyi Model ise Kopyasını "BEST" Olarak Sakla
-    if is_best:
-        best_filename = os.path.join(directory, 'BEST_checkpoint_' + data_name + '.pth.tar')
-        torch.save(state, best_filename)
-        print(f"[*] En iyi model kaydedildi: {best_filename}")
-    else:
-        print(f"[*] Checkpoint kaydedildi: {filename}")
 
 def main(args, meteor_output=None):
     print_with_json(args)
@@ -664,14 +656,11 @@ def main(args, meteor_output=None):
             device,
             num_train_optimization_steps
         )"""
-    metrics, nochange_metrics, change_metrics = evaluate_transformer(
-            args, encoder_image=encoder_image,clip_encoder_image=clip_encoder_image, encoder_feat=encoder_feat, decoder=decoder
-        )
     epoch = 0
     save_checkpoint(args, "SecondCC", epoch, epochs_since_improvement, 
                         encoder_image, encoder_feat, decoder, 
                         encoder_image_optimizer, encoder_feat_optimizer, decoder_optimizer,
-                        metrics, is_best, clip_encoder_image, clip_encoder_image_optimizer)
+                        clip_encoder_image, clip_encoder_image_optimizer)
     print("-------------------------Saved------------------------")
     
 
