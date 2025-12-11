@@ -486,7 +486,7 @@ def validate_loss(val_loader, encoder_image, clip_encoder_image, encoder_feat, d
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     with torch.no_grad(): # Gradient hesabı yapma
-        for i, (img_pairs, caps, caplens) in enumerate(val_loader):
+        for i, (img_pairs, caps, caplens, *_) in enumerate(val_loader):
             # Veriyi GPU'ya taşı
             img_pairs = img_pairs.to(device)
             caps = caps.to(device)
