@@ -472,6 +472,47 @@ def save_checkpoint(args, data_name, epoch, epochs_since_improvement,
     filename = os.path.join(directory, 'checkpoint_' + data_name + '.pth.tar')
     torch.save(state, filename)
 
+def validate_loss(val_loader, encoder_image, clip_encoder_image, encoder_feat, decoder, criterion):
+    """
+    Validation seti üzerinde sadece Loss hesabı yapar.
+    """
+    # Modelleri eval moduna al (Dropout ve BatchNorm'u kapatır)
+    # encoder_image.eval() # Eğer kullanılıyorsa
+    clip_encoder_image.eval()
+    encoder_feat.eval()
+    decoder.eval()
+
+    losses = AverageMeter()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    with torch.no_grad(): # Gradient hesabı yapma
+        for i, (img_pairs, caps, caplens) in enumerate(val_loader):
+            # Veriyi GPU'ya taşı
+            img_pairs = img_pairs.to(device)
+            caps = caps.to(device)
+            caplens = caplens.to(device)
+
+            # Forward prop.
+            imgs_A = img_pairs[:, 0, :, :, :]
+            imgs_B = img_pairs[:, 1, :, :, :]
+
+            clip_imgs_A = clip_encoder_image(imgs_A)
+            clip_imgs_B = clip_encoder_image(imgs_B)
+
+            fused_feat = encoder_feat(clip_imgs_A, clip_imgs_B)
+
+            scores, caps_sorted, decode_lengths, sort_ind = decoder(fused_feat, caps, caplens)
+
+            # Hedefleri ayarla
+            targets = caps_sorted[:, 1:]
+            scores = pack_padded_sequence(scores, decode_lengths, batch_first=True).data
+            targets = pack_padded_sequence(targets, decode_lengths, batch_first=True).data
+
+            # Loss hesapla
+            loss = criterion(scores, targets)
+            losses.update(loss.item(), sum(decode_lengths))
+            
+    return losses.avg
 
 def main(args, meteor_output=None):
     print_with_json(args)
@@ -481,6 +522,9 @@ def main(args, meteor_output=None):
     start_epoch = 0
     best_bleu4 = 0.0  # BLEU-4 score right now
     epochs_since_improvement = 0  # keeps track of number of epochs since there's been an improvement in validation BLEU
+    # start_epoch döngüsünden önce:
+    best_val_loss = float('inf')  # Sonsuz ile başlatıyoruz, azaldıkça güncelleyeceğiz.
+    
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # sets device for model and PyTorch tensors
     # device = torch.device("cpu")  # sets device for model and PyTorch tensors
 
@@ -608,6 +652,19 @@ def main(args, meteor_output=None):
         num_workers=args.workers,
         pin_memory=True,
     )
+    
+    # Validation Loader (Loss hesabı için)
+    val_loader = torch.utils.data.DataLoader(
+        CaptionDataset(args.data_folder, args.data_name, "VAL", 
+                    transform=transforms.Compose([
+                        transforms.Resize((224, 224)),
+                        normalize
+                    ])),
+        batch_size=args.batch_size,
+        shuffle=False, # Validation için shuffle gerekmez
+        num_workers=args.workers,
+        pin_memory=True,
+    )
 
     num_train_optimization_steps = len(train_loader) * args.epochs 
 
@@ -656,14 +713,6 @@ def main(args, meteor_output=None):
             device,
             num_train_optimization_steps
         )"""
-    epoch = 0
-    save_checkpoint(args, "SecondCC", epoch, epochs_since_improvement, 
-                        encoder_image, encoder_feat, decoder, 
-                        encoder_image_optimizer, encoder_feat_optimizer, decoder_optimizer,
-                        clip_encoder_image, clip_encoder_image_optimizer)
-    print("-------------------------Saved------------------------")
-    
-
 
     # Epochs
     for epoch in range(start_epoch, args.epochs):
@@ -699,12 +748,59 @@ def main(args, meteor_output=None):
             epoch=epoch,
         )
 
+        # ... train() fonksiyonu çağrısı bittikten sonra ...
+
         # -----------------------------------------------------------------------------------------------------
         # One epoch's validation
-        print("-------------------------epoch passed-------------------------")
+        print("------------------------- Validating Loss -------------------------")
+        
+        # 1. Validation Loss Hesapla
+        current_val_loss = validate_loss(
+            val_loader, 
+            encoder_image=encoder_image,
+            clip_encoder_image=clip_encoder_image, 
+            encoder_feat=encoder_feat, 
+            decoder=decoder,
+            criterion=criterion
+        )
+        
+        print_with_json(f"Epoch: {epoch} - Validation Loss: {current_val_loss:.4f}")
+
+        # Mevcut metrik hesaplamaları (Evaluate transformer) - LOGLAMA İÇİN KALSIN
         metrics, nochange_metrics, change_metrics = evaluate_transformer(
             args, encoder_image=encoder_image,clip_encoder_image=clip_encoder_image, encoder_feat=encoder_feat, decoder=decoder
         )
+
+        # ... (Metrics list append işlemleri aynı kalsın) ...
+        # bleu_4_output.append(...) vb. kısımlara dokunmayın.
+
+        # ---------------- Check Improvement (Validation Loss'a Göre) ----------------
+        
+        # Loss azaldı mı? (Küçük olması daha iyi)
+        is_best = current_val_loss < best_val_loss
+        
+        if is_best:
+            best_val_loss = current_val_loss
+            epochs_since_improvement = 0
+            print_with_json(f"New Best Validation Loss: {best_val_loss:.4f} (Saved)")
+        else:
+            epochs_since_improvement += 1
+            print_with_json(f"\nLoss did not decrease. Epochs since last improvement: {epochs_since_improvement}\n")
+
+        # Save checkpoint (Loss düştüyse kaydeder, yoksa son epoch üzerine yazar)
+        save_checkpoint(args, "SecondCC", epoch, epochs_since_improvement, 
+                        encoder_image, encoder_feat, decoder, 
+                        encoder_image_optimizer, encoder_feat_optimizer, decoder_optimizer,
+                        metrics, is_best, clip_encoder_image, clip_encoder_image_optimizer)
+
+        # Early Stopping
+        if epochs_since_improvement == args.stop_criteria:
+            print_with_json(f"Early stopping triggered! Validation loss hasn't decreased for {args.stop_criteria} epochs.")
+            break
+
+        # -----------------------------------------------------------------------------------------------------
+        # One epoch's validation
+        print("-------------------------epoch passed-------------------------")
 
         metrics_list.append(metrics)
         recent_bleu4 = metrics["Bleu_4"]
