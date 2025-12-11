@@ -48,7 +48,7 @@ def create_input_files(dataset, karpathy_json_path, image_folder, captions_per_i
     :param max_len: don't sample captions longer than this length
     """
 
-    assert dataset in {'RSICD', 'LEVIR_CC', 'Second_CC_RGB', 'Second_CC'}
+    assert dataset in {'RSICD', 'LEVIR_CC', 'Second_CC_RGB', 'Second_CC_Big','Second_CC_Little'}
 
     # Read Karpathy JSON
     with open(karpathy_json_path, 'r') as j:
@@ -84,6 +84,10 @@ def create_input_files(dataset, karpathy_json_path, image_folder, captions_per_i
             path2 = os.path.join(image_folder, img['split'], 'B', img['filename'])
             path = [path1,path2]
         elif dataset == 'Second_CC_RGB':
+            path1 = os.path.join(image_folder, img['split'], 'rgb', 'A', img['filename'])
+            path2 = os.path.join(image_folder, img['split'], 'rgb', 'B', img['filename'])
+            path = [path1,path2]
+        elif dataset == 'Second_CC_Little' or dataset == 'Second_CC_Big':
             path1 = os.path.join(image_folder, img['split'], 'rgb', 'A', img['filename'])
             path2 = os.path.join(image_folder, img['split'], 'rgb', 'B', img['filename'])
             path = [path1,path2]
@@ -131,7 +135,7 @@ def create_input_files(dataset, karpathy_json_path, image_folder, captions_per_i
             h.attrs['captions_per_image'] = captions_per_image
 
             # Create dataset inside HDF5 file to store images
-            if dataset =='LEVIR_CC' or dataset =='Second_CC_RGB':
+            if dataset =='LEVIR_CC' or dataset =='Second_CC_RGB'or dataset =='Second_CC_Little'or dataset =='Second_CC_Big':
                 images = h.create_dataset('images', (len(impaths), 2, 3, 256, 256), dtype='uint8')
             else:
                 images = h.create_dataset('images', (len(impaths), 3, 256, 256), dtype='uint8')
@@ -153,7 +157,7 @@ def create_input_files(dataset, karpathy_json_path, image_folder, captions_per_i
                 assert len(captions) == captions_per_image
 
                 # Read images
-                if dataset =='LEVIR_CC' or dataset =='Second_CC_RGB':
+                if dataset =='LEVIR_CC' or dataset =='Second_CC_RGB'or dataset =='Second_CC_Little'or dataset =='Second_CC_Big':
                     img_A = imread(impaths[i][0])
                     img_B = imread(impaths[i][1])
                     if len(img_A.shape) == 2:
