@@ -791,7 +791,7 @@ def main(args, meteor_output=None):
         save_checkpoint(args, "SecondCC", epoch, epochs_since_improvement, 
                         encoder_image, encoder_feat, decoder, 
                         encoder_image_optimizer, encoder_feat_optimizer, decoder_optimizer,
-                        metrics, is_best, clip_encoder_image, clip_encoder_image_optimizer)
+                        clip_encoder_image, clip_encoder_image_optimizer)
 
         # Early Stopping
         if epochs_since_improvement == args.stop_criteria:
