@@ -729,6 +729,7 @@ if __name__ == "__main__":
     os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
     # Data parameters
+    parser.add_argument("--data_folder", default="")
     parser.add_argument("--data_name", default="LEVIR_CC_5_cap_per_img_10_min_word_freq", help="base name shared by data files.")
     # Model parameters
     parser.add_argument('--encoder_image', default="resnet101", help='which model does encoder use?')
