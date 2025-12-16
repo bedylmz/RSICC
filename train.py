@@ -27,7 +27,6 @@ def train(
     args,
     train_loader,
     encoder_image,
-    clip_encoder_image,
     encoder_feat,
     decoder,
     criterion,
