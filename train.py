@@ -303,7 +303,7 @@ def main(args, meteor_output=None):
     print("Checkpoint_savepath:{}".format(args.savepath))
     print(
         "Encoder_image_mode:{}   Encoder_feat_mode:{}   Decoder_mode:{}".format(
-            args.encoder_image_model, args.encoder_feat, args.decoder
+            args.encoder_image, args.encoder_feat, args.decoder
         )
     )
     print(
