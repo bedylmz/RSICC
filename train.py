@@ -349,7 +349,7 @@ def main(args, meteor_output=None):
         )
 
         # Mevcut metrik hesaplamaları (Evaluate transformer) - LOGLAMA İÇİN KALSIN
-        metrics, nochange_metrics, change_metrics = evaluate_transformer(
+        metrics = evaluate_transformer(
             args, encoder_image=encoder_image,encoder_feat=encoder_feat, decoder=decoder
         )
 
