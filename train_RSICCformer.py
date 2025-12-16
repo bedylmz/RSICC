@@ -16,34 +16,10 @@ from utils import *
 from eval import evaluate_transformer
 
 
-
 from exploringDebugging import write_debug
 
 seed = 1
 torch.manual_seed(seed)
-
-metrics_list = []
-losses_output = []
-AVG_losses_output = []
-top5_accuracy_output = []
-batch_time_output = []
-
-train_model_sonuc_map = {}
-
-rogue_l_output = []
-cider_output = []
-bleu_4_output = []
-rogue_l_nochange_output = []
-cider_nochange_output = []
-bleu_4_nochange_output = []
-#meteor1_nochange_output = []
-#meteor1_change_output = []
-#meteor1_output = []
-rogue_l_change_output = []
-cider_change_output = []
-bleu_4_change_output = []
-
-val_model_sonuc_map = {}
 
 
 from CLIP_modules.modeling import CLIP4IDC
@@ -286,10 +262,6 @@ def train(
                     batch_time.val,
                 )
             )
-            losses_output.append(losses.val)
-            AVG_losses_output.append(losses.avg)
-            top5_accuracy_output.append(top5accs.val)
-            batch_time_output.append(batch_time.val)
 
 
 def key_transformation(old_key):
