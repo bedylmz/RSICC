@@ -10,16 +10,12 @@ import argparse
 from torch.optim.lr_scheduler import StepLR
 import datetime
 
-from models_CNN_toplayan import CNN_Encoder
-from models_RSICCformerDfusion_CNN_toplayan import *
+from models import CNN_Encoder
+from models_RSICCformerDfusion import *
 from datasets import *
-from eval_v2_CNN_toplayan import evaluate_transformer
+from eval import evaluate_transformer
 import sys
 
-from clip4cc import model_arrange
-from bert_adam_optimizer import BertAdam
-
-#sys.path.append(r"C:\Users\TUBITAK\Desktop\RSICC_v2\SECONDCCpap")
 from utils import *
 
 from torchvision.transforms.functional import to_pil_image
