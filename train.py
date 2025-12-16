@@ -399,6 +399,8 @@ if __name__ == "__main__":
     # Data parameters
     parser.add_argument("--data_name", default="LEVIR_CC_5_cap_per_img_10_min_word_freq", help="base name shared by data files.")
     parser.add_argument("--data_folder", default="")
+    parser.add_argument("--cross_model", default="")
+    parser.add_argument("--save_model_path", default="")
     # Model parameters
     parser.add_argument('--encoder_image', default="resnet101", help='which model does encoder use?')
     parser.add_argument("--encoder_feat", default="MCCFormers_diff_as_Q")
