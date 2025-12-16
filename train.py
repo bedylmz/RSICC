@@ -50,9 +50,7 @@ def train(
     :param epoch: epoch number
     """
 
-    #encoder_image.train()
-    #encoder_image2.train()
-    clip_encoder_image.eval()
+    encoder_image.train()
     encoder_feat.train()
     decoder.train()  # train mode (dropout and batchnorm is used)
 
