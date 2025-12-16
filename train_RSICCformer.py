@@ -29,7 +29,6 @@ top5_accuracy_output = []
 batch_time_output = []
 
 train_model_sonuc_map = {}
-text_terminal = " "
 
 rogue_l_output = []
 cider_output = []
@@ -45,12 +44,6 @@ cider_change_output = []
 bleu_4_change_output = []
 
 val_model_sonuc_map = {}
-
-
-def print_with_json(text):
-    global text_terminal
-    print(text)
-    text_terminal += str(text) + "\n"
 
 
 from CLIP_modules.modeling import CLIP4IDC
@@ -74,18 +67,11 @@ class CLIPVisualEncoder(nn.Module):
             task_config=args,
         )
         
-        # 2. Checkpoint'i yükleyin
-        #model_state_dict = torch.load(clip_model_path, map_location="cpu")
-        #self.clip_model.load_state_dict(model_state_dict['model_state_dict']) # Key'lere dikkat
-
         # Sadece görsel kısmı al (örneğin visual transformer)
         self.visual_encoder = self.clip_model.clip.visual 
 
-        # --- ÇÖZÜM BURADA ---
         # Modeli Float32 (Tam Hassasiyet) moduna zorla
         self.visual_encoder.float()
-
-        # --- YENİ DÜZELTME (BUNU EKLEYİN) ---
         self.visual_encoder.cuda()
 
         # Modelin orijinal çıktı boyutunu al (örn: 768)
@@ -99,27 +85,6 @@ class CLIPVisualEncoder(nn.Module):
         # Eğer sadece feature extractor olacaksa dondurun, eğitilecekse açık bırakın.
         for param in self.visual_encoder.parameters():
             param.requires_grad = False # veya True
-
-    """Old basic forward
-    def forward(self, images):
-        # CLIP'ten özellikleri çıkar
-        # Dikkat: RSICCformer 'sequence' (yama dizisi) bekliyorsa, 
-        # CLIP'in son katmanındaki pooling öncesi çıktıya ihtiyacınız var.
-
-        with torch.no_grad(): # Eğer freeze ise
-            features = self.visual_encoder(images) 
-            # features shape örneği: [Batch, 197, 768] (ViT için)
-
-
-        features = features[:, 1:, :]
-
-        print("Feature Boyutu: "+str(features.shape()))
-
-        # Boyut dönüşümü yap
-        out = self.projection(features) 
-        # out shape: [Batch, 197, target_dim]
-
-        return out"""
     
     def forward(self, x):
         # x shape: [Batch, 3, 224, 224]
@@ -224,13 +189,9 @@ def train(
     batch_time = AverageMeter()  # forward prop. + back prop. time
     data_time = AverageMeter()  # data loading time
     losses = AverageMeter()  # loss (per word decoded)
-    top5accs_our = AverageMeter()
     top5accs = AverageMeter()  # top5 accuracy
 
     start = time.time()
-
-    # Batches
-    best_bleu4 = 0.0  # BLEU-4 score right now
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -313,7 +274,7 @@ def train(
         start = time.time()
         if i % args.print_freq == 0:
             # print('TIME: ', time.strftime("%m-%d  %H : %M : %S", time.localtime(time.time())))
-            print_with_json(
+            print(
                 "Epoch: {}/{} step: {}/{} Loss: {} AVG_Loss: {} Top-5 Accuracy: {} Batch_time: {}s".format(
                     epoch + 0,
                     args.epochs,
@@ -515,9 +476,9 @@ def validate_loss(val_loader, encoder_image, clip_encoder_image, encoder_feat, d
     return losses.avg
 
 def main(args, meteor_output=None):
-    print_with_json(args)
+    print(args)
     global metrics_list
-    print_with_json(time.strftime("%m-%d  %H : %M : %S", time.localtime(time.time())))
+    print(time.strftime("%m-%d  %H : %M : %S", time.localtime(time.time())))
 
     start_epoch = 0
     best_bleu4 = 0.0  # BLEU-4 score right now
@@ -557,7 +518,7 @@ def main(args, meteor_output=None):
     encoder_image_dim = 1024 # resnet101
     # filename = os.listdir(args.checkpoint)
     # checkpoint_path = os.path.join(args.checkpoint, filename[0])
-    # print_with_json(args.checkpoint + filename[0])
+    # print(args.checkpoint + filename[0])
     # checkpoint = torch.load(checkpoint_path, map_location=str(device))
     # encoder_image2 = checkpoint['encoder_image']
     # encoder_feat2 = checkpoint['encoder_feat']
@@ -596,7 +557,7 @@ def main(args, meteor_output=None):
     if args.checkpoint is not "None":
         filename = os.listdir(args.checkpoint)
         checkpoint_path = os.path.join(args.checkpoint, filename[0])
-        # print_with_json(args.checkpoint + filename[0])
+        # print(args.checkpoint + filename[0])
         checkpoint = torch.load(checkpoint_path, map_location=str(device))
 
     # encoder_image2 = checkpoint['encoder_image']
@@ -619,13 +580,13 @@ def main(args, meteor_output=None):
     encoder_feat = encoder_feat.to(device)
     decoder = decoder.to(device)
 
-    print_with_json("Checkpoint_savepath:{}".format(args.savepath))
-    print_with_json(
+    print("Checkpoint_savepath:{}".format(args.savepath))
+    print(
         "Encoder_image_mode:{}   Encoder_feat_mode:{}   Decoder_mode:{}".format(
             args.encoder_image_model, args.encoder_feat, args.decoder
         )
     )
-    print_with_json(
+    print(
         "encoder_layers {} decoder_layers {} n_heads {} dropout {} encoder_lr {} "
         "decoder_lr {}".format(
             args.n_layers, args.decoder_n_layers, args.n_heads, args.dropout, args.encoder_lr, args.decoder_lr
@@ -687,7 +648,6 @@ def main(args, meteor_output=None):
     
     ])
 
-
     # GPU'ya taşıdığınızdan emin olun (Sınıf içinde yaptıysanız bile garanti olsun)
     clip_encoder_image = clip_encoder_image.cuda()
 
@@ -716,19 +676,8 @@ def main(args, meteor_output=None):
 
     # Epochs
     for epoch in range(start_epoch, args.epochs):
-
-        # Decay learning rate if there is no improvement for x consecutive epochs, and terminate training after x
-        if epochs_since_improvement == args.stop_criteria:
-            print_with_json("the model has not improved in the last {} epochs".format(args.stop_criteria))
-            break
-        if epochs_since_improvement > 0 and epochs_since_improvement % 3 == 0:
-            adjust_learning_rate(decoder_optimizer, 0.7)
-            if args.fine_tune_encoder and encoder_image_optimizer is not None:
-                print_with_json(encoder_image_optimizer)
-                # adjust_learning_rate(encoder_optimizer, 0.8)
-
         # One epoch's training
-        print_with_json(time.strftime("%m-%d  %H : %M : %S", time.localtime(time.time())))
+        print(time.strftime("%m-%d  %H : %M : %S", time.localtime(time.time())))
         train(
             args,
             train_loader=train_loader,
@@ -748,10 +697,7 @@ def main(args, meteor_output=None):
             epoch=epoch,
         )
 
-        # ... train() fonksiyonu çağrısı bittikten sonra ...
-
-        # -----------------------------------------------------------------------------------------------------
-        # One epoch's validation
+        """ Buna gerek yok zaten evaluate_transformer da metriklerle yapıyoruz
         print("------------------------- Validating Loss -------------------------")
         
         # 1. Validation Loss Hesapla
@@ -764,161 +710,61 @@ def main(args, meteor_output=None):
             criterion=criterion
         )
         
-        print_with_json(f"Epoch: {epoch} - Validation Loss: {current_val_loss:.4f}")
+        print(f"Epoch: {epoch} - Validation Loss: {current_val_loss:.4f}")"""
 
         # Mevcut metrik hesaplamaları (Evaluate transformer) - LOGLAMA İÇİN KALSIN
         metrics, nochange_metrics, change_metrics = evaluate_transformer(
             args, encoder_image=encoder_image,clip_encoder_image=clip_encoder_image, encoder_feat=encoder_feat, decoder=decoder
         )
 
-        # ... (Metrics list append işlemleri aynı kalsın) ...
-        # bleu_4_output.append(...) vb. kısımlara dokunmayın.
-
-        # ---------------- Check Improvement (Validation Loss'a Göre) ----------------
-        
-        # Loss azaldı mı? (Küçük olması daha iyi)
-        is_best = current_val_loss < best_val_loss
-        
-        if is_best:
-            best_val_loss = current_val_loss
-            epochs_since_improvement = 0
-            print_with_json(f"New Best Validation Loss: {best_val_loss:.4f} (Saved)")
-        else:
-            epochs_since_improvement += 1
-            print_with_json(f"\nLoss did not decrease. Epochs since last improvement: {epochs_since_improvement}\n")
-
-        # Save checkpoint (Loss düştüyse kaydeder, yoksa son epoch üzerine yazar)
-        save_checkpoint(args, "SecondCC", epoch, epochs_since_improvement, 
-                        encoder_image, encoder_feat, decoder, 
-                        encoder_image_optimizer, encoder_feat_optimizer, decoder_optimizer,
-                        clip_encoder_image, clip_encoder_image_optimizer)
-
-        # Early Stopping
-        if epochs_since_improvement == args.stop_criteria:
-            print_with_json(f"Early stopping triggered! Validation loss hasn't decreased for {args.stop_criteria} epochs.")
-            break
-
         # -----------------------------------------------------------------------------------------------------
         # One epoch's validation
         print("-------------------------epoch passed-------------------------")
 
-        metrics_list.append(metrics)
         recent_bleu4 = metrics["Bleu_4"]
-        bleu_4_output.append([metrics["Bleu_1"], metrics["Bleu_2"], metrics["Bleu_3"], metrics["Bleu_4"]])
-        rogue_l_output.append(metrics["ROUGE_L"])
-        #meteor1_output.append(metrics["METEOR"])
-        cider_output.append(metrics["CIDEr"])
-        bleu_4_nochange_output.append(
-            [
-                nochange_metrics["Bleu_1"],
-                nochange_metrics["Bleu_2"],
-                nochange_metrics["Bleu_3"],
-                nochange_metrics["Bleu_4"],
-            ]
-        )
-        rogue_l_nochange_output.append(nochange_metrics["ROUGE_L"])
-        cider_nochange_output.append(nochange_metrics["CIDEr"])
-        #meteor1_nochange_output.append(nochange_metrics["METEOR"])
-        bleu_4_change_output.append(
-            [change_metrics["Bleu_1"], change_metrics["Bleu_2"], change_metrics["Bleu_3"], change_metrics["Bleu_4"]]
-        )
-        rogue_l_change_output.append(change_metrics["ROUGE_L"])
-        cider_change_output.append(change_metrics["CIDEr"])
-        #meteor1_change_output.append(change_metrics["METEOR"])
+        
         # Check if there was an improvement
         is_best = recent_bleu4 > best_bleu4
         best_bleu4 = max(recent_bleu4, best_bleu4)
         if not is_best:
             epochs_since_improvement += 1
-            print_with_json("\nEpochs since last improvement: %d\n" % (epochs_since_improvement,))
+            print("\nEpochs since last improvement: %d\n" % (epochs_since_improvement,))
         else:
             epochs_since_improvement = 0
-
-        # Save checkpoint
-        checkpoint_name = (
-            args.encoder_image_model + "_" + args.encoder_feat + "_" + args.decoder
-        )  # _tengxun_aggregation
-        save_checkpoint(args, "SecondCC", epoch, epochs_since_improvement, 
-                        encoder_image, encoder_feat, decoder, 
-                        encoder_image_optimizer, encoder_feat_optimizer, decoder_optimizer,
-                        clip_encoder_image, clip_encoder_image_optimizer)
-
-    train_model_sonuc_map["losses"] = losses_output
-    train_model_sonuc_map["avg_losses"] = AVG_losses_output
-    train_model_sonuc_map["top5_acc"] = top5_accuracy_output
-    val_model_sonuc_map["rogue_l"] = rogue_l_output
-    val_model_sonuc_map["cider"] = cider_output
-    val_model_sonuc_map["bleu_4"] = bleu_4_output
-    #val_model_sonuc_map["meteor"] = meteor1_output
-    val_model_sonuc_map["rogue_l_nochange"] = rogue_l_nochange_output
-    val_model_sonuc_map["cider_nochange"] = cider_nochange_output
-    #val_model_sonuc_map["meteor_nochange"] = meteor1_nochange_output
-    val_model_sonuc_map["bleu_4_nochange"] = bleu_4_nochange_output
-    val_model_sonuc_map["rogue_l_change"] = rogue_l_change_output
-    val_model_sonuc_map["cider_change"] = cider_change_output
-    val_model_sonuc_map["bleu_4_change"] = bleu_4_change_output
-    #val_model_sonuc_map["meteor_change"] = meteor1_change_output
-
-    train_model_sonuc_json = json.dumps(train_model_sonuc_map, indent=4)
-    val_model_sonuc_json = json.dumps(val_model_sonuc_map, indent=4)
-    # Get the current date in the format YYYY-MM-DD
-    current_date = datetime.date.today().strftime("%Y%m%d")
-
-    # Define your save path
-    output_save_path = args.savepath.replace("/model_dir", "")
-
-    # Construct the filename with the current date
-    file_name = f"{output_save_path}/train_{current_date}.json"
-    file_name2 = f"{output_save_path}/val_{current_date}.json"
-    file_name3 = f"{output_save_path}/terminal_text_{current_date}.txt"
-
-    # Assuming you already have train_model_sonuc_json
-    # Write the JSON data to the file
-    with open(file_name3, "w") as dosya:
-        dosya.write(text_terminal)
-    with open(file_name, "w") as dosya:
-        dosya.write(train_model_sonuc_json)
-    with open(file_name2, "w") as dosya:
-        dosya.write(val_model_sonuc_json)
-
-
-current_date = datetime.date.today().strftime("%Y%m%d")
+        if is_best:
+            print("-------------------------checkpoint Saved-------------------------")
+            # Save checkpoint
+            save_checkpoint(args, "SecondCC", epoch, epochs_since_improvement, 
+                            encoder_image, encoder_feat, decoder, 
+                            encoder_image_optimizer, encoder_feat_optimizer, decoder_optimizer,
+                            clip_encoder_image, clip_encoder_image_optimizer)
+            
+         # Early Stopping
+        if epochs_since_improvement == args.stop_criteria:
+            print(f"Early stopping triggered! Validation metrics hasn't increased for {args.stop_criteria} epochs.")
+            break
+        if epochs_since_improvement > 0 and epochs_since_improvement % 3 == 0:
+            adjust_learning_rate(decoder_optimizer, 0.7)
+            if args.fine_tune_encoder and encoder_image_optimizer is not None:
+                print(encoder_image_optimizer)
+                # adjust_learning_rate(encoder_optimizer, 0.8)
 
 
 if __name__ == "__main__":
-    print_with_json("bu toplayan modeldir.")
-    dosya_index = 0
-    folder_path = f"./model_sonucları/{current_date}_RSICCformerRGB_{dosya_index}"
-    while os.path.exists(folder_path):
-        # If it doesn't exist, create it
-        print(f"Folder '{folder_path}' already exists.")
-        dosya_index += 1
-        folder_path = f"./model_sonucları/{current_date}_RSICCformerRGB_{dosya_index}"
-    folder_path += "/model_dir"
-    os.makedirs(folder_path)
-    print(f"Folder '{folder_path}' created successfully.")
-
+    folder_path = ""
+   
     parser = argparse.ArgumentParser(description="Image_Change_Captioning")
     os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
     # Data parameters
-    parser.add_argument(
-        "--data_folder",
-        default=r"Z:\createdFileBlackAUG",
-        help="folder with data files saved by create_input_files.py.",
-    )
-    # parser.add_argument('--data_folder', default=r"C:\Users\TUBITAK\Desktop\RSICC_v2\SECONDCCpap\createdFileBlackAUG",
-    #                     help='folder with data files saved by create_input_files.py.')
-    parser.add_argument(
-        "--data_name", default="LEVIR_CC_5_cap_per_img_10_min_word_freq", help="base name shared by data files."
-    )
+    parser.add_argument("--data_name", default="LEVIR_CC_5_cap_per_img_10_min_word_freq", help="base name shared by data files.")
     # Model parameters
     parser.add_argument('--encoder_image', default="resnet101", help='which model does encoder use?')
     parser.add_argument("--encoder_image_model", default="clip4IDC", help="which model does encoder use?")
     parser.add_argument("--encoder_feat", default="MCCFormers_diff_as_Q")
     parser.add_argument("--decoder", default="trans")
     parser.add_argument("--n_heads", type=int, default=8, help="Multi-head attention in Transformer.")
-    parser.add_argument("--n_layers", type=int, default=3)
+    parser.add_argument("--n_layers", type=int, default=2)
     parser.add_argument("--decoder_n_layers", type=int, default=1)
     parser.add_argument("--feature_dim_de", type=int, default=1024)
     parser.add_argument("--dropout", type=float, default=0.5, help="dropout")
@@ -932,26 +778,17 @@ if __name__ == "__main__":
     parser.add_argument("--save_model_path", type=str, default="/content/RSICC/ckpts", help="Layer NO. of intra module")
 
     # Training parameters
-    parser.add_argument(
-        "--epochs", type=int, default=40, help="number of epochs to train for (if early stopping is not triggered)."
-    )
-    parser.add_argument(
-        "--stop_criteria", type=int, default=10, help="training stop if epochs_since_improvement == stop_criteria"
-    )
-    parser.add_argument("--batch_size", type=int, default=26, help="batch_size")
+    parser.add_argument("--epochs", type=int, default=40, help="number of epochs to train for (if early stopping is not triggered).")
+    parser.add_argument("--stop_criteria", type=int, default=10, help="training stop if epochs_since_improvement == stop_criteria")
+    parser.add_argument("--batch_size", type=int, default=28, help="batch_size")
     parser.add_argument("--print_freq", type=int, default=100, help="print training/validation stats every __ batches.")
-    parser.add_argument(
-        "--workers", type=int, default=0, help="for data-loading; right now, only 0 works with h5pys in windows."
-    )
-    parser.add_argument(
-        "--encoder_lr", type=float, default=5e-5, help="learning rate for encoder if fine-tuning."
-    )  # en son 5e-5 yap
-    parser.add_argument("--decoder_lr", type=float, default=5e-5, help="learning rate for decoder.")  # en son 5e-5 yap
+    parser.add_argument("--workers", type=int, default=0, help="for data-loading; right now, only 0 works with h5pys in windows.")
+    parser.add_argument("--encoder_lr", type=float, default=5e-5, help="learning rate for encoder if fine-tuning.")
+    parser.add_argument("--decoder_lr", type=float, default=5e-5, help="learning rate for decoder.")
     parser.add_argument("--clip_encoder_lr", type=float, default=0.0001, help="learning rate for CLIP fine-tuning.")    
     parser.add_argument("--grad_clip", type=float, default=5.0, help="clip gradients at an absolute value of.")
     parser.add_argument("--fine_tune_encoder", type=bool, default=True, help="whether fine-tune encoder or not")
 
-    # parser.add_argument('--checkpoint', default="C:/Users\TUBITAK\Desktop\Turabi\model_sonucları/20231103_5/model_dir/", help='path to checkpoint, None if none.')
     parser.add_argument("--checkpoint", default="None", help="path to checkpoint, None if none.")
     # Validation
     parser.add_argument("--Split", default="VAL", help="which")
@@ -966,7 +803,4 @@ if __name__ == "__main__":
     os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
     args = parser.parse_args()
     main(args)
-    # folder_path = "./model_sonucları/20241029_RSICCformerSadeceSemantik/model_dir"
-    #subprocess.run(
-    #    f"python eval_v2_CNN_toplayan.py --data_folder {args.data_folder} --terminal_output {folder_path.replace('/model_dir','')} --path {folder_path} --beam_size {args.#beam_size} --data_name {args.data_name}"
-    #)
+    
