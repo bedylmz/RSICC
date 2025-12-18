@@ -180,7 +180,8 @@ def train(
         decoder_optimizer.zero_grad()
         encoder_feat_optimizer.zero_grad()
         clip_encoder_optimizer.zero_grad()
-        #encoder_image_optimizer.zero_grad()
+        if(args.dual_branch):
+            encoder_image_optimizer.zero_grad()
 
         # Move to GPU, if available
         img_pairs = img_pairs.to(device)
@@ -195,10 +196,22 @@ def train(
         clip_imgs_A = clip_encoder_image(imgs_A)
         clip_imgs_B = clip_encoder_image(imgs_B)
 
+        if(args.dual_branch):
+            res_imgs_A = encoder_image(imgs_A)
+            res_imgs_B = encoder_image(imgs_B)
+
+        final_imgs_A = clip_encoder_image(imgs_A)
+        final_imgs_B = clip_encoder_image(imgs_B)
+
+        if(args.feature_fusion == "addition"):
+            final_imgs_A = (clip_imgs_A + res_imgs_A) / 2
+            final_imgs_B = (clip_imgs_B + res_imgs_B) / 2
+
         fused_feat = encoder_feat(
-            clip_imgs_A,
-            clip_imgs_B,
+            final_imgs_A,
+            final_imgs_B,
         ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
+
 
         scores, caps_sorted, decode_lengths, sort_ind = decoder(fused_feat, caps, caplens)
 
@@ -218,6 +231,7 @@ def train(
         #    clip_encoder_optimizer.zero_grad()  
   
         loss.backward()
+
 
         # Clip gradients
         #if args.grad_clip is not None:
@@ -647,19 +661,19 @@ def main(args, meteor_output=None):
         )"""
     
 #------------------------TOKENİZER----------------
+    if(args.clip_text_encoder):
+        from CLIP_modules.tokenization_clip import SimpleTokenizer
 
-    from CLIP_modules.tokenization_clip import SimpleTokenizer
-
-    clip_tokenizer = SimpleTokenizer()
-    clip_model_ref = clip_encoder_image.clip_model.clip
-    
-    # Köprü fonksiyonunu çalıştır
-    bridge_embeddings_and_transfer(
-        rsicc_decoder=decoder, 
-        clip_model=clip_model_ref, 
-        clip_tokenizer=clip_tokenizer, 
-        rsicc_word_map=word_map
-    )
+        clip_tokenizer = SimpleTokenizer()
+        clip_model_ref = clip_encoder_image.clip_model.clip
+        
+        # Köprü fonksiyonunu çalıştır
+        bridge_embeddings_and_transfer(
+            rsicc_decoder=decoder, 
+            clip_model=clip_model_ref, 
+            clip_tokenizer=clip_tokenizer, 
+            rsicc_word_map=word_map
+        )
 
 #------------------------TOKENİZER----------------
 
@@ -769,6 +783,14 @@ if __name__ == "__main__":
     parser.add_argument("--intra_num_hidden_layers", type=int, default=9, help="Layer NO. of intra module")
     parser.add_argument("--clip_path", type=str, default="/content/RSICC/ckpts/pytorch_model.bin.0", help="Layer NO. of intra module")
     parser.add_argument("--save_model_path", type=str, default="/content/RSICC/ckpts", help="Layer NO. of intra module")
+    
+    #params for dual branch
+    parser.add_argument("--dual_branch", type=bool, default=False)
+    parser.add_argument("--feature_fusion", type=str, default="concat")
+
+    #params for text encoder
+    parser.add_argument("--clip_text_encoder", type=bool, default=False)
+
 
     # Training parameters
     parser.add_argument("--epochs", type=int, default=40, help="number of epochs to train for (if early stopping is not triggered).")
