@@ -425,7 +425,7 @@ import numpy as np
 def bridge_embeddings_and_transfer(rsicc_decoder, clip_model, clip_tokenizer, rsicc_word_map):
     """
     RSICC'nin Word-Level kelime haritası ile CLIP'in BPE vektörleri arasında köprü kurar.
-    RSICC'deki her kelime için CLIP'ten karşılık gelen vektörlerin ortalamasını alır.
+    Dimension mismatch (512 vs 1024) durumunda vektörleri tekrarlayarak transfer eder.
     """
     print(f">>> CLIP ve RSICC Tokenizer Köprüsü Kuruluyor...")
     
@@ -435,82 +435,88 @@ def bridge_embeddings_and_transfer(rsicc_decoder, clip_model, clip_tokenizer, rs
     
     # RSICC Embedding boyutları
     vocab_size = rsicc_emb_layer.weight.shape[0]
-    embed_dim = rsicc_emb_layer.weight.shape[1]
+    embed_dim = rsicc_emb_layer.weight.shape[1] # Muhtemelen 1024
     
     # İstatistikler
     found_count = 0
     total_count = len(rsicc_word_map)
     
-    # Gradient takibi olmasın, sadece kopyalıyoruz
     with torch.no_grad():
         for word, rsicc_id in rsicc_word_map.items():
-            # RSICC'deki özel tokenları CLIP'teki karşılıklarıyla eşle
+            # CLIP için özel token eşleştirmeleri
             if word == '<start>':
-                # CLIP: <|startoftext|>
                 clip_tokens = clip_tokenizer.encode("<|startoftext|>")
             elif word == '<end>':
-                # CLIP: <|endoftext|>
                 clip_tokens = clip_tokenizer.encode("<|endoftext|>")
-            elif word == '<pad>':
-                continue # Pad genelde 0 kalır, dokunma
-            elif word == '<unk>':
-                continue # Unk rastgele kalsın
+            elif word == '<pad>' or word == '<unk>':
+                continue
             else:
-                # Normal kelimeyi CLIP tokenizer ile parçala
-                # Örn: "telescope" -> [ID1, ID2]
                 clip_tokens = clip_tokenizer.encode(word)
             
             if len(clip_tokens) > 0:
-                # CLIP'ten bu tokenların ID'lerini al
                 clip_indices = torch.tensor(clip_tokens).to(clip_emb_weight.device)
-                
-                # İlgili vektörleri çek: [Token_Sayısı, 512]
                 vectors = clip_emb_weight[clip_indices]
                 
-                # Eğer kelime birden fazla parçaya bölündüyse ortalamasını al
-                # Örn: "tele" + "scope" vektörlerinin ortalaması "telescope" olur.
+                # Kelime parçalarının ortalamasını al -> [512]
                 avg_vector = torch.mean(vectors, dim=0)
                 
-                # RSICC decoder'ına bu vektörü yerleştir
-                if rsicc_id < vocab_size: # Güvenlik kontrolü
+                # --- BOYUT UYUŞMAZLIĞI DÜZELTMESİ ---
+                if avg_vector.shape[0] != embed_dim:
+                    if embed_dim == 1024 and avg_vector.shape[0] == 512:
+                         # 512'lik vektörü 2 kere yan yana koyarak 1024 yapıyoruz (Concatenate)
+                         # Bu sayede bilgi korunur ve 1024 boyuta ulaşılır.
+                         avg_vector = torch.cat([avg_vector, avg_vector], dim=0)
+                    else:
+                        # Eğer başka bir boyut farkı varsa atla ve uyar
+                        # print(f"Skip: {word} dim mismatch {avg_vector.shape} vs {embed_dim}")
+                        continue
+                
+                # Kopyala
+                if rsicc_id < vocab_size:
                     rsicc_emb_layer.weight[rsicc_id].copy_(avg_vector)
                     found_count += 1
 
     print(f">>> Embedding Transfer Tamamlandı: {found_count}/{total_count} kelime CLIP'ten aktarıldı.")
 
     # ---------------------------------------------------------
-    # 2. Transformer Katmanlarını Transfer Et (Önceki cevabımdaki kodun aynısı)
+    # 2. Transformer Katmanlarını Transfer Et
     # ---------------------------------------------------------
-    print(">>> Transformer Katmanları Transfer Ediliyor...")
+    print(">>> Transformer Katmanları Kontrol Ediliyor...")
     clip_layers = clip_model.transformer.resblocks
     decoder_layers = rsicc_decoder.transformer.layers 
     
     min_layers = min(len(clip_layers), len(decoder_layers))
     
+    transferred_layers = 0
     with torch.no_grad():
         for i in range(min_layers):
-            c_layer = clip_layers[i]     # CLIP Layer
-            d_layer = decoder_layers[i]  # RSICC Decoder Layer
+            c_layer = clip_layers[i]
+            d_layer = decoder_layers[i]
             
-            # --- Self-Attention ---
-            if c_layer.attn.in_proj_weight.shape == d_layer.self_attn.in_proj_weight.shape:
-                d_layer.self_attn.in_proj_weight.data.copy_(c_layer.attn.in_proj_weight.data)
-                d_layer.self_attn.in_proj_bias.data.copy_(c_layer.attn.in_proj_bias.data)
-                d_layer.self_attn.out_proj.weight.data.copy_(c_layer.attn.out_proj.weight.data)
-                d_layer.self_attn.out_proj.bias.data.copy_(c_layer.attn.out_proj.bias.data)
+            # Boyut kontrolü: Eğer CLIP (512) ve Decoder (1024) uyuşmuyorsa transferi atla.
+            if c_layer.attn.in_proj_weight.shape != d_layer.self_attn.in_proj_weight.shape:
+                continue
 
-            # --- Layer Norms ---
+            # Boyutlar uyuşuyorsa (örn: feature_dim_de=512 yaptıysanız) transfer et
+            d_layer.self_attn.in_proj_weight.data.copy_(c_layer.attn.in_proj_weight.data)
+            d_layer.self_attn.in_proj_bias.data.copy_(c_layer.attn.in_proj_bias.data)
+            d_layer.self_attn.out_proj.weight.data.copy_(c_layer.attn.out_proj.weight.data)
+            d_layer.self_attn.out_proj.bias.data.copy_(c_layer.attn.out_proj.bias.data)
+
             d_layer.norm1.weight.data.copy_(c_layer.ln_1.weight.data)
             d_layer.norm1.bias.data.copy_(c_layer.ln_1.bias.data)
-            
             d_layer.norm3.weight.data.copy_(c_layer.ln_2.weight.data)
             d_layer.norm3.bias.data.copy_(c_layer.ln_2.bias.data)
 
-            # --- Feed Forward ---
-            if c_layer.mlp.c_fc.weight.shape == d_layer.linear1.weight.shape:
-                d_layer.linear1.weight.data.copy_(c_layer.mlp.c_fc.weight.data)
-                d_layer.linear1.bias.data.copy_(c_layer.mlp.c_fc.bias.data)
-                
-            if c_layer.mlp.c_proj.weight.shape == d_layer.linear2.weight.shape:
-                d_layer.linear2.weight.data.copy_(c_layer.mlp.c_proj.weight.data)
-                d_layer.linear2.bias.data.copy_(c_layer.mlp.c_proj.bias.data)
+            d_layer.linear1.weight.data.copy_(c_layer.mlp.c_fc.weight.data)
+            d_layer.linear1.bias.data.copy_(c_layer.mlp.c_fc.bias.data)
+            d_layer.linear2.weight.data.copy_(c_layer.mlp.c_proj.weight.data)
+            d_layer.linear2.bias.data.copy_(c_layer.mlp.c_proj.bias.data)
+            
+            transferred_layers += 1
+            
+    if transferred_layers == 0:
+        print(f">>> UYARI: Boyut farkı (512 vs {embed_dim}) nedeniyle Transformer katmanları transfer EDİLEMEDİ.")
+        print(">>> Sadece Embedding katmanı (çoğaltılarak) transfer edildi, model sıfırdan öğrenecek.")
+    else:
+        print(f">>> {transferred_layers} Transformer katmanı başarıyla transfer edildi.")
