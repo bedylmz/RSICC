@@ -143,6 +143,8 @@ def train(
     decoder_optimizer,
     decoder_lr_scheduler,
     epoch,
+    projection_layer,
+    projection_optimizer
 ):
     """
     Performs one epoch's training.
@@ -182,6 +184,7 @@ def train(
         clip_encoder_optimizer.zero_grad()
         if(args.dual_branch):
             encoder_image_optimizer.zero_grad()
+            projection_optimizer.zero.grad()
 
         # Move to GPU, if available
         img_pairs = img_pairs.to(device)
@@ -204,9 +207,16 @@ def train(
         final_imgs_B = clip_encoder_image(imgs_B)
 
         if(args.dual_branch == True and args.feature_fusion == "addition"):
-            print("------- Flag ---------\n")
             final_imgs_A = (clip_imgs_A + res_imgs_A) / 2
             final_imgs_B = (clip_imgs_B + res_imgs_B) / 2
+        
+        elif(args.dual_branch == True and args.feature_fusion == "concat"):
+            print("------- Flag for concat---------\n")
+            final_imgs_A = torch.cat([clip_imgs_A, res_imgs_B], dim=1)
+            final_imgs_B = torch.cat([clip_imgs_B, res_imgs_B], dim=1)
+            final_imgs_A = projection_layer(final_imgs_A)
+            final_imgs_B = projection_layer(final_imgs_B)
+
 
         fused_feat = encoder_feat(
             final_imgs_A,
@@ -677,6 +687,15 @@ def main(args, meteor_output=None):
         )
 
 #------------------------TOKENİZER----------------
+
+    # main fonksiyonu içerisinde veya model init kısmında:
+    # 2048 giriş kanalı -> 1024 çıkış kanalı, 1x1 kernel
+    projection_layer = nn.Conv2d(2048, 1024, kernel_size=1).cuda()
+
+    # Bu katmanın optimizer'a dahil edilmesi gerekir!
+    # Mevcut optimizerlardan birine ekleyebilirsiniz veya yeni bir optimizer tanımlayabilirsiniz.
+    # Örn:
+    projection_optimizer = torch.optim.Adam(projection_layer.parameters(), lr=args.encoder_lr)
 
 
     # Epochs
