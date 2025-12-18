@@ -158,11 +158,13 @@ def train(
     :param epoch: epoch number
     """
 
-    #encoder_image.train()
+    if(args.dual_branch ==True):
+        encoder_image.train()
     #encoder_image2.train()
     clip_encoder_image.train()
     encoder_feat.train()
     decoder.train()  # train mode (dropout and batchnorm is used)
+    projection_layer.train()
 
     batch_time = AverageMeter()  # forward prop. + back prop. time
     data_time = AverageMeter()  # data loading time
@@ -184,7 +186,7 @@ def train(
         clip_encoder_optimizer.zero_grad()
         if(args.dual_branch):
             encoder_image_optimizer.zero_grad()
-            #projection_optimizer.zero.grad()
+            projection_optimizer.zero.grad()
 
         # Move to GPU, if available
         img_pairs = img_pairs.to(device)
