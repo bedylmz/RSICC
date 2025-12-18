@@ -645,6 +645,24 @@ def main(args, meteor_output=None):
             device,
             num_train_optimization_steps
         )"""
+    
+#------------------------TOKENİZER----------------
+
+    from CLIP_modules.tokenization_clip import SimpleTokenizer
+
+    clip_tokenizer = SimpleTokenizer()
+    clip_model_ref = clip_encoder_image.clip_model.clip
+    
+    # Köprü fonksiyonunu çalıştır
+    bridge_embeddings_and_transfer(
+        rsicc_decoder=decoder, 
+        clip_model=clip_model_ref, 
+        clip_tokenizer=clip_tokenizer, 
+        rsicc_word_map=word_map
+    )
+
+#------------------------TOKENİZER----------------
+
 
     # Epochs
     for epoch in range(start_epoch, args.epochs):
@@ -668,6 +686,8 @@ def main(args, meteor_output=None):
             decoder_lr_scheduler=decoder_lr_scheduler,
             epoch=epoch,
         )
+
+
 
         """ Buna gerek yok zaten evaluate_transformer da metriklerle yapıyoruz
         print("------------------------- Validating Loss -------------------------")
