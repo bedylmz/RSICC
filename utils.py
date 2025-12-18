@@ -412,3 +412,105 @@ def convert2words(sequences, rev_word_map):
             caption += rev_word_map[l2]
             caption += " "
         print(caption)
+
+
+
+
+
+#---------------------------TOKENİZER-------------------------------------------
+
+import torch
+import numpy as np
+
+def bridge_embeddings_and_transfer(rsicc_decoder, clip_model, clip_tokenizer, rsicc_word_map):
+    """
+    RSICC'nin Word-Level kelime haritası ile CLIP'in BPE vektörleri arasında köprü kurar.
+    RSICC'deki her kelime için CLIP'ten karşılık gelen vektörlerin ortalamasını alır.
+    """
+    print(f">>> CLIP ve RSICC Tokenizer Köprüsü Kuruluyor...")
+    
+    # 1. Hedef ve Kaynak Embedding Matrisleri
+    rsicc_emb_layer = rsicc_decoder.vocab_embedding
+    clip_emb_weight = clip_model.token_embedding.weight # [49408, 512]
+    
+    # RSICC Embedding boyutları
+    vocab_size = rsicc_emb_layer.weight.shape[0]
+    embed_dim = rsicc_emb_layer.weight.shape[1]
+    
+    # İstatistikler
+    found_count = 0
+    total_count = len(rsicc_word_map)
+    
+    # Gradient takibi olmasın, sadece kopyalıyoruz
+    with torch.no_grad():
+        for word, rsicc_id in rsicc_word_map.items():
+            # RSICC'deki özel tokenları CLIP'teki karşılıklarıyla eşle
+            if word == '<start>':
+                # CLIP: <|startoftext|>
+                clip_tokens = clip_tokenizer.encode("<|startoftext|>")
+            elif word == '<end>':
+                # CLIP: <|endoftext|>
+                clip_tokens = clip_tokenizer.encode("<|endoftext|>")
+            elif word == '<pad>':
+                continue # Pad genelde 0 kalır, dokunma
+            elif word == '<unk>':
+                continue # Unk rastgele kalsın
+            else:
+                # Normal kelimeyi CLIP tokenizer ile parçala
+                # Örn: "telescope" -> [ID1, ID2]
+                clip_tokens = clip_tokenizer.encode(word)
+            
+            if len(clip_tokens) > 0:
+                # CLIP'ten bu tokenların ID'lerini al
+                clip_indices = torch.tensor(clip_tokens).to(clip_emb_weight.device)
+                
+                # İlgili vektörleri çek: [Token_Sayısı, 512]
+                vectors = clip_emb_weight[clip_indices]
+                
+                # Eğer kelime birden fazla parçaya bölündüyse ortalamasını al
+                # Örn: "tele" + "scope" vektörlerinin ortalaması "telescope" olur.
+                avg_vector = torch.mean(vectors, dim=0)
+                
+                # RSICC decoder'ına bu vektörü yerleştir
+                if rsicc_id < vocab_size: # Güvenlik kontrolü
+                    rsicc_emb_layer.weight[rsicc_id].copy_(avg_vector)
+                    found_count += 1
+
+    print(f">>> Embedding Transfer Tamamlandı: {found_count}/{total_count} kelime CLIP'ten aktarıldı.")
+
+    # ---------------------------------------------------------
+    # 2. Transformer Katmanlarını Transfer Et (Önceki cevabımdaki kodun aynısı)
+    # ---------------------------------------------------------
+    print(">>> Transformer Katmanları Transfer Ediliyor...")
+    clip_layers = clip_model.transformer.resblocks
+    decoder_layers = rsicc_decoder.transformer.layers 
+    
+    min_layers = min(len(clip_layers), len(decoder_layers))
+    
+    with torch.no_grad():
+        for i in range(min_layers):
+            c_layer = clip_layers[i]     # CLIP Layer
+            d_layer = decoder_layers[i]  # RSICC Decoder Layer
+            
+            # --- Self-Attention ---
+            if c_layer.attn.in_proj_weight.shape == d_layer.self_attn.in_proj_weight.shape:
+                d_layer.self_attn.in_proj_weight.data.copy_(c_layer.attn.in_proj_weight.data)
+                d_layer.self_attn.in_proj_bias.data.copy_(c_layer.attn.in_proj_bias.data)
+                d_layer.self_attn.out_proj.weight.data.copy_(c_layer.attn.out_proj.weight.data)
+                d_layer.self_attn.out_proj.bias.data.copy_(c_layer.attn.out_proj.bias.data)
+
+            # --- Layer Norms ---
+            d_layer.norm1.weight.data.copy_(c_layer.ln_1.weight.data)
+            d_layer.norm1.bias.data.copy_(c_layer.ln_1.bias.data)
+            
+            d_layer.norm3.weight.data.copy_(c_layer.ln_2.weight.data)
+            d_layer.norm3.bias.data.copy_(c_layer.ln_2.bias.data)
+
+            # --- Feed Forward ---
+            if c_layer.mlp.c_fc.weight.shape == d_layer.linear1.weight.shape:
+                d_layer.linear1.weight.data.copy_(c_layer.mlp.c_fc.weight.data)
+                d_layer.linear1.bias.data.copy_(c_layer.mlp.c_fc.bias.data)
+                
+            if c_layer.mlp.c_proj.weight.shape == d_layer.linear2.weight.shape:
+                d_layer.linear2.weight.data.copy_(c_layer.mlp.c_proj.weight.data)
+                d_layer.linear2.bias.data.copy_(c_layer.mlp.c_proj.bias.data)
