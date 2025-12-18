@@ -203,7 +203,7 @@ def train(
         final_imgs_A = clip_encoder_image(imgs_A)
         final_imgs_B = clip_encoder_image(imgs_B)
 
-        if(args.feature_fusion == "addition"):
+        if(args.dual_branch and args.feature_fusion == "addition"):
             final_imgs_A = (clip_imgs_A + res_imgs_A) / 2
             final_imgs_B = (clip_imgs_B + res_imgs_B) / 2
 
