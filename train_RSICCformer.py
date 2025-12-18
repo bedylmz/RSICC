@@ -184,7 +184,7 @@ def train(
         clip_encoder_optimizer.zero_grad()
         if(args.dual_branch):
             encoder_image_optimizer.zero_grad()
-            projection_optimizer.zero.grad()
+            #projection_optimizer.zero.grad()
 
         # Move to GPU, if available
         img_pairs = img_pairs.to(device)
