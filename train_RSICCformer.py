@@ -719,6 +719,8 @@ def main(args, meteor_output=None):
             decoder_optimizer=decoder_optimizer,
             decoder_lr_scheduler=decoder_lr_scheduler,
             epoch=epoch,
+            projection_optimizer = projection_optimizer,
+            projection_layer = projection_layer,
         )
 
 
