@@ -839,7 +839,7 @@ if __name__ == "__main__":
         type=float,
         help="Proportion of training to perform linear learning rate warmup " "for. E.g., 0.1 = 10%% of training.",
     )
-    os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+    #os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
     args = parser.parse_args()
     main(args)
     
