@@ -779,7 +779,7 @@ def main(args, meteor_output=None):
                     print(encoder_image_optimizer)
                     # adjust_learning_rate(encoder_optimizer, 0.8)
     else:
-        checkpoint = torch.load(checkpoint_path, map_location=str(device))
+        checkpoint = torch.load(args.checkpoint_path, map_location=str(device))
         encoder_image = checkpoint['encoder_image']
         encoder_feat = checkpoint['encoder_feat']
         decoder = checkpoint['decoder']
@@ -810,6 +810,9 @@ if __name__ == "__main__":
     parser.add_argument("--dropout", type=float, default=0.5, help="dropout")
 
     parser.add_argument("--eval_mode", type=bool, default=False)
+    parser.add_argument("--checkpoint_path", type=str, default="")
+
+
 
 
     #params for CLIP4IDC implementation
