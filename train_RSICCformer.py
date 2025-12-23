@@ -699,86 +699,90 @@ def main(args, meteor_output=None):
     # Örn:
     projection_optimizer = torch.optim.Adam(projection_layer.parameters(), lr=args.encoder_lr)
 
+    if(args.eval_mode == False):
+        # Epochs
+        for epoch in range(start_epoch, args.epochs):
+            # One epoch's training
+            print(time.strftime("%m-%d  %H : %M : %S", time.localtime(time.time())))
+            train(
+                args,
+                train_loader=train_loader,
+                encoder_image=encoder_image,
+                clip_encoder_image=clip_encoder_image,
+                encoder_feat=encoder_feat,
+                decoder=decoder,
+                criterion=criterion,
+                encoder_image_optimizer=encoder_image_optimizer,
+                clip_encoder_optimizer=clip_encoder_image_optimizer,
+                encoder_image_lr_scheduler=encoder_image_lr_scheduler,
+                #clip_encoder_scheduler=clip_encoder_scheduler,
+                encoder_feat_optimizer=encoder_feat_optimizer,
+                encoder_feat_lr_scheduler=encoder_feat_lr_scheduler,
+                decoder_optimizer=decoder_optimizer,
+                decoder_lr_scheduler=decoder_lr_scheduler,
+                epoch=epoch,
+                projection_optimizer = projection_optimizer,
+                projection_layer = projection_layer,
+            )
 
-    # Epochs
-    for epoch in range(start_epoch, args.epochs):
-        # One epoch's training
-        print(time.strftime("%m-%d  %H : %M : %S", time.localtime(time.time())))
-        train(
-            args,
-            train_loader=train_loader,
-            encoder_image=encoder_image,
-            clip_encoder_image=clip_encoder_image,
-            encoder_feat=encoder_feat,
-            decoder=decoder,
-            criterion=criterion,
-            encoder_image_optimizer=encoder_image_optimizer,
-            clip_encoder_optimizer=clip_encoder_image_optimizer,
-            encoder_image_lr_scheduler=encoder_image_lr_scheduler,
-            #clip_encoder_scheduler=clip_encoder_scheduler,
-            encoder_feat_optimizer=encoder_feat_optimizer,
-            encoder_feat_lr_scheduler=encoder_feat_lr_scheduler,
-            decoder_optimizer=decoder_optimizer,
-            decoder_lr_scheduler=decoder_lr_scheduler,
-            epoch=epoch,
-            projection_optimizer = projection_optimizer,
-            projection_layer = projection_layer,
-        )
 
 
-
-        """ Buna gerek yok zaten evaluate_transformer da metriklerle yapıyoruz
-        print("------------------------- Validating Loss -------------------------")
-        
-        # 1. Validation Loss Hesapla
-        current_val_loss = validate_loss(
-            val_loader, 
-            encoder_image=encoder_image,
-            clip_encoder_image=clip_encoder_image, 
-            encoder_feat=encoder_feat, 
-            decoder=decoder,
-            criterion=criterion
-        )
-        
-        print(f"Epoch: {epoch} - Validation Loss: {current_val_loss:.4f}")"""
-
-        # Mevcut metrik hesaplamaları (Evaluate transformer) - LOGLAMA İÇİN KALSIN
-        metrics, nochange_metrics, change_metrics = evaluate_transformer(
-            args, encoder_image=encoder_image,clip_encoder_image=clip_encoder_image, encoder_feat=encoder_feat, decoder=decoder
-        )
-
-        # -----------------------------------------------------------------------------------------------------
-        # One epoch's validation
-        print("-------------------------epoch passed-------------------------")
-
-        recent_bleu4 = metrics["Bleu_4"]
-        
-        # Check if there was an improvement
-        is_best = recent_bleu4 > best_bleu4
-        best_bleu4 = max(recent_bleu4, best_bleu4)
-        if not is_best:
-            epochs_since_improvement += 1
-            print("\nEpochs since last improvement: %d\n" % (epochs_since_improvement,))
-        else:
-            epochs_since_improvement = 0
-        if is_best:
-            print("-------------------------checkpoint Saved-------------------------")
-            # Save checkpoint
-            save_checkpoint(args, "SecondCC", epoch, epochs_since_improvement, 
-                            encoder_image, encoder_feat, decoder, 
-                            encoder_image_optimizer, encoder_feat_optimizer, decoder_optimizer,
-                            clip_encoder_image, clip_encoder_image_optimizer)
+            """ Buna gerek yok zaten evaluate_transformer da metriklerle yapıyoruz
+            print("------------------------- Validating Loss -------------------------")
             
-         # Early Stopping
-        if epochs_since_improvement == args.stop_criteria:
-            print(f"Early stopping triggered! Validation metrics hasn't increased for {args.stop_criteria} epochs.")
-            break
-        if epochs_since_improvement > 0 and epochs_since_improvement % 3 == 0:
-            adjust_learning_rate(decoder_optimizer, 0.7)
-            if args.fine_tune_encoder and encoder_image_optimizer is not None:
-                print(encoder_image_optimizer)
-                # adjust_learning_rate(encoder_optimizer, 0.8)
+            # 1. Validation Loss Hesapla
+            current_val_loss = validate_loss(
+                val_loader, 
+                encoder_image=encoder_image,
+                clip_encoder_image=clip_encoder_image, 
+                encoder_feat=encoder_feat, 
+                decoder=decoder,
+                criterion=criterion
+            )
+            
+            print(f"Epoch: {epoch} - Validation Loss: {current_val_loss:.4f}")"""
 
+            # Mevcut metrik hesaplamaları (Evaluate transformer) - LOGLAMA İÇİN KALSIN
+            metrics, nochange_metrics, change_metrics = evaluate_transformer(
+                args, encoder_image=encoder_image,clip_encoder_image=clip_encoder_image, encoder_feat=encoder_feat, decoder=decoder
+            )
+
+            # -----------------------------------------------------------------------------------------------------
+            # One epoch's validation
+            print("-------------------------epoch passed-------------------------")
+
+            recent_bleu4 = metrics["Bleu_4"]
+            
+            # Check if there was an improvement
+            is_best = recent_bleu4 > best_bleu4
+            best_bleu4 = max(recent_bleu4, best_bleu4)
+            if not is_best:
+                epochs_since_improvement += 1
+                print("\nEpochs since last improvement: %d\n" % (epochs_since_improvement,))
+            else:
+                epochs_since_improvement = 0
+            if is_best:
+                print("-------------------------checkpoint Saved-------------------------")
+                # Save checkpoint
+                save_checkpoint(args, "SecondCC", epoch, epochs_since_improvement, 
+                                encoder_image, encoder_feat, decoder, 
+                                encoder_image_optimizer, encoder_feat_optimizer, decoder_optimizer,
+                                clip_encoder_image, clip_encoder_image_optimizer)
+                
+            # Early Stopping
+            if epochs_since_improvement == args.stop_criteria:
+                print(f"Early stopping triggered! Validation metrics hasn't increased for {args.stop_criteria} epochs.")
+                break
+            if epochs_since_improvement > 0 and epochs_since_improvement % 3 == 0:
+                adjust_learning_rate(decoder_optimizer, 0.7)
+                if args.fine_tune_encoder and encoder_image_optimizer is not None:
+                    print(encoder_image_optimizer)
+                    # adjust_learning_rate(encoder_optimizer, 0.8)
+    else:
+         metrics, nochange_metrics, change_metrics = evaluate_transformer(
+                args, encoder_image=encoder_image,clip_encoder_image=clip_encoder_image, encoder_feat=encoder_feat, decoder=decoder
+            )
+        
 
 if __name__ == "__main__":
     folder_path = ""
@@ -799,6 +803,9 @@ if __name__ == "__main__":
     parser.add_argument("--decoder_n_layers", type=int, default=1)
     parser.add_argument("--feature_dim_de", type=int, default=1024)
     parser.add_argument("--dropout", type=float, default=0.5, help="dropout")
+
+    parser.add_argument("--eval_mode", type=bool, default=False)
+
 
     #params for CLIP4IDC implementation
     parser.add_argument("--cross_model", default="cross-base", type=str, required=False, help="Cross module")
