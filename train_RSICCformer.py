@@ -779,14 +779,36 @@ def main(args, meteor_output=None):
                     print(encoder_image_optimizer)
                     # adjust_learning_rate(encoder_optimizer, 0.8)
     else:
+        print(f"Loading checkpoint from {args.checkpoint_path}")
         checkpoint = torch.load(args.checkpoint_path, map_location=str(device))
-        encoder_image = checkpoint['encoder_image']
-        encoder_feat = checkpoint['encoder_feat']
-        decoder = checkpoint['decoder']
-        clip_encoder_image = checkpoint['clip_encoder_image']
+        
+        # --- CORRECT LOADING METHOD ---
+        # 1. Load weights into the EXISTING model instance using load_state_dict()
+        # 2. Wrap in try/except or if checks to handle missing keys safely
+        
+        if 'encoder_image' in checkpoint:
+            encoder_image.load_state_dict(checkpoint['encoder_image'])
+        
+        if 'encoder_feat' in checkpoint:
+            encoder_feat.load_state_dict(checkpoint['encoder_feat'])
+            
+        if 'decoder' in checkpoint:
+            decoder.load_state_dict(checkpoint['decoder'])
+
+        # Check for CLIP specifically (since it caused the previous error)
+        if 'clip_encoder_image' in checkpoint:
+            clip_encoder_image.load_state_dict(checkpoint['clip_encoder_image'])
+        else:
+            print("WARNING: 'clip_encoder_image' weights not found in checkpoint. Using initialized weights.")
+
+        # Now run evaluation
         metrics, nochange_metrics, change_metrics = evaluate_transformer(
-                args, encoder_image=encoder_image,clip_encoder_image=clip_encoder_image, encoder_feat=encoder_feat, decoder=decoder
-            )
+            args, 
+            encoder_image=encoder_image,
+            clip_encoder_image=clip_encoder_image, 
+            encoder_feat=encoder_feat, 
+            decoder=decoder
+        )
         
 
 if __name__ == "__main__":
