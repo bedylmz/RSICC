@@ -7,6 +7,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 import argparse
 import time
+from train_RSICCformer import CLIPVisualEncoder
 normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                              std=[0.229, 0.224, 0.225])
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -285,6 +286,7 @@ if __name__ == '__main__':
     parser.add_argument('--epoch', default="epoch", help='which')
     parser.add_argument('--beam_size', type=int, default=1, help='beam_size.')
     parser.add_argument('--path', default="./models_checkpoint/", help='model checkpoint.')
+
     args = parser.parse_args()
 
     filename = os.listdir(args.path)
@@ -302,10 +304,14 @@ if __name__ == '__main__':
         encoder_feat = checkpoint['encoder_feat']
         decoder = checkpoint['decoder']
 
+        Clip_visual_encoder_module = CLIPVisualEncoder(args.clip_path,1024)
+
+        # Wrapper'ın kendisini değişkene ata!
+        clip_encoder_image = Clip_visual_encoder_module
 
         if args.decoder == "trans":
             # metrics = evaluate_ori(args,encoder_image,encoder_feat,decoder)
-            metrics = evaluate_transformer(args,encoder_image,encoder_feat,decoder)
+            metrics = evaluate_transformer(args,encoder_image,encoder_feat,decoder, clip_encoder_image)
 
         print("{} - beam size {}: BLEU-1 {} BLEU-2 {} BLEU-3 {} BLEU-4 {} METEOR {} ROUGE_L {} CIDEr {}".format
               (args.decoder, args.beam_size, metrics["Bleu_1"], metrics["Bleu_2"], metrics["Bleu_3"],
