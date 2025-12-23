@@ -779,7 +779,12 @@ def main(args, meteor_output=None):
                     print(encoder_image_optimizer)
                     # adjust_learning_rate(encoder_optimizer, 0.8)
     else:
-         metrics, nochange_metrics, change_metrics = evaluate_transformer(
+        checkpoint = torch.load(checkpoint_path, map_location=str(device))
+        encoder_image = checkpoint['encoder_image']
+        encoder_feat = checkpoint['encoder_feat']
+        decoder = checkpoint['decoder']
+        clip_encoder_image = checkpoint['clip_encoder_image']
+        metrics, nochange_metrics, change_metrics = evaluate_transformer(
                 args, encoder_image=encoder_image,clip_encoder_image=clip_encoder_image, encoder_feat=encoder_feat, decoder=decoder
             )
         

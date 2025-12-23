@@ -13,111 +13,6 @@ normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                              std=[0.229, 0.224, 0.225])
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-from CLIP_modules.modeling import CLIP4IDC
-
-from CLIP_modules.file_utils import PYTORCH_PRETRAINED_BERT_CACHE
-
-class CLIPVisualEncoder(nn.Module):
-    def __init__(self, clip_model_path, target_dim):
-        super().__init__()
-        # 1. Sizin kütüphanenizden CLIP modelini başlatın
-        # Prepare model
-        cache_dir = os.path.join(str(PYTORCH_PRETRAINED_BERT_CACHE),"distributed")
-
-        # 2. Checkpoint'i yükleyin
-        model_state_dict = torch.load(clip_model_path, map_location="cpu")
-        self.clip_model = CLIP4IDC.from_pretrained(
-            args.cross_model,
-            args.decoder_model,
-            cache_dir=cache_dir,
-            state_dict=model_state_dict,
-            task_config=args,
-        )
-        
-        # Sadece görsel kısmı al (örneğin visual transformer)
-        self.visual_encoder = self.clip_model.clip.visual 
-
-        # Modeli Float32 (Tam Hassasiyet) moduna zorla
-        self.visual_encoder.float()
-        self.visual_encoder.cuda()
-
-        # Modelin orijinal çıktı boyutunu al (örn: 768)
-        clip_out_dim = self.visual_encoder.output_dim 
-
-        # 3. Boyut Eşitleyici (Projection Layer)
-        self.projection = nn.Linear(768, target_dim) # 768 olmasının sebebi custom forward yapmamız
-        self.projection.float()
-
-        # 4. İsteğe bağlı: CLIP encoder'ı dondur (freeze) 
-        # Eğer sadece feature extractor olacaksa dondurun, eğitilecekse açık bırakın.
-        for param in self.visual_encoder.parameters():
-            param.requires_grad = False # veya True
-    
-    def forward(self, x):
-        # x shape: [Batch, 3, 224, 224]
-        
-        # --- CLIP'in içindeki forward akışını MANUEL yapıyoruz ---
-        # Böylece module_clip.py line 508'deki hatadan kaçınıyoruz.
-        
-        with torch.no_grad():
-            # 1. Conv1 (Patch Embedding)
-            # Çıktı: [Batch, 768, 7, 7] (ViT-B/32 için)
-            x = self.visual_encoder.conv1(x) 
-            
-            # 2. Flatten ve Transpose
-            # Çıktı: [Batch, 49, 768]
-            x = x.reshape(x.shape[0], x.shape[1], -1) 
-            x = x.permute(0, 2, 1) 
-            
-            # 3. Class Embedding ve Positional Embedding Ekleme
-            # class_embedding shape: [768] -> [1, 1, 768] -> [Batch, 1, 768]
-            class_embedding = self.visual_encoder.class_embedding.to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device)
-            
-            # x shape: [Batch, 50, 768] (49 patch + 1 class)
-            x = torch.cat([class_embedding, x], dim=1) 
-            x = x + self.visual_encoder.positional_embedding.to(x.dtype)
-            
-            # 4. Layer Norm (Pre-Transformer)
-            x = self.visual_encoder.ln_pre(x)
-            
-            # 5. Transformer Katmanları
-            x = x.permute(1, 0, 2)  # [50, Batch, 768] (Transformer NLD formatı ister)
-            x = self.visual_encoder.transformer(x)
-            x = x.permute(1, 0, 2)  # [Batch, 50, 768] (Geri çevir)
-            
-            # 6. Layer Norm (Post-Transformer)
-            x = self.visual_encoder.ln_post(x)
-            
-            # --- Buraya kadar özellikler çıkarıldı ---
-
-        # --- RSICCformer İçin Şekillendirme ---
-        
-        # 7. CLS Tokeni at (İlk tokeni çıkar)
-        # Geriye [Batch, 49, 768] kalır
-        features = x[:, 1:, :] 
-        
-        # 8. Kare formata geri döndür
-        # Shape: [Batch, 768, 7, 7]
-        batch_size = features.shape[0]
-        side = int(features.shape[1] ** 0.5) # 7
-        features = features.permute(0, 2, 1).view(batch_size, -1, side, side)
-        
-        # 9. Interpolasyon (14x14'e büyüt) -> RSICCformer ResNet boyutu sever
-        features = torch.nn.functional.interpolate(features, size=(14, 14), mode='bilinear', align_corners=False)
-        # Shape: [Batch, 768, 14, 14]
-
-        # 10. Projection (Boyut Eşitleme)
-        # Linear katman son boyutta çalışır, bu yüzden kanalları sona al: [Batch, 14, 14, 768]
-        features = features.permute(0, 2, 3, 1)
-        out = self.projection(features)
-        
-        # 11. Son Çıktı Formatı: [Batch, 1024, 14, 14]
-        # Kanalları tekrar başa al
-        out = out.permute(0, 3, 1, 2)
-        
-        return out
-
-
 def save_captions(args, word_map, hypotheses, references):
     result_json_file = {}
     reference_json_file = {}
@@ -384,13 +279,6 @@ if __name__ == '__main__':
     parser.add_argument('--data_folder', default="./data/",help='folder with data files saved by create_input_files.py.')
     parser.add_argument('--data_name', default="LEVIR_CC_5_cap_per_img_5_min_word_freq",help='base name shared by data files.')
 
-    parser.add_argument("--cross_model", default="cross-base", type=str, required=False, help="Cross module")
-    parser.add_argument("--decoder_model", default="decoder-base", type=str, required=False, help="Decoder module")
-    parser.add_argument("--task_type", default="retrieval", type=str, help="Point the task `retrieval` to finetune.")
-    parser.add_argument("--intra_num_hidden_layers", type=int, default=9, help="Layer NO. of intra module")
-    parser.add_argument("--clip_path", type=str, default="/content/RSICC/ckpts/pytorch_model.bin.0", help="Layer NO. of intra module")
-    parser.add_argument("--save_model_path", type=str, default="/content/RSICC/ckpts", help="Layer NO. of intra module")
-    
     parser.add_argument('--encoder_image', default="resnet101")
     parser.add_argument('--encoder_feat', default="MCCFormers_diff_as_Q")
     parser.add_argument('--decoder', default="trans", help="decoder img2txt")  #
@@ -416,14 +304,9 @@ if __name__ == '__main__':
         encoder_feat = checkpoint['encoder_feat']
         decoder = checkpoint['decoder']
 
-        Clip_visual_encoder_module = CLIPVisualEncoder(args.clip_path,1024)
-
-        # Wrapper'ın kendisini değişkene ata!
-        clip_encoder_image = Clip_visual_encoder_module
-
         if args.decoder == "trans":
             # metrics = evaluate_ori(args,encoder_image,encoder_feat,decoder)
-            metrics = evaluate_transformer(args,encoder_image,encoder_feat,decoder, clip_encoder_image)
+            metrics = evaluate_transformer(args,encoder_image,encoder_feat,decoder)
 
         print("{} - beam size {}: BLEU-1 {} BLEU-2 {} BLEU-3 {} BLEU-4 {} METEOR {} ROUGE_L {} CIDEr {}".format
               (args.decoder, args.beam_size, metrics["Bleu_1"], metrics["Bleu_2"], metrics["Bleu_3"],
