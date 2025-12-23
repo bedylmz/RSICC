@@ -384,6 +384,8 @@ if __name__ == '__main__':
     parser.add_argument('--data_folder', default="./data/",help='folder with data files saved by create_input_files.py.')
     parser.add_argument('--data_name', default="LEVIR_CC_5_cap_per_img_5_min_word_freq",help='base name shared by data files.')
 
+    parser.add_argument("--clip_path", type=str, default="/content/RSICC/ckpts/pytorch_model.bin.0", help="Layer NO. of intra module")
+
     parser.add_argument('--encoder_image', default="resnet101")
     parser.add_argument('--encoder_feat', default="MCCFormers_diff_as_Q")
     parser.add_argument('--decoder', default="trans", help="decoder img2txt")  #
