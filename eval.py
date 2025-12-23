@@ -384,9 +384,13 @@ if __name__ == '__main__':
     parser.add_argument('--data_folder', default="./data/",help='folder with data files saved by create_input_files.py.')
     parser.add_argument('--data_name', default="LEVIR_CC_5_cap_per_img_5_min_word_freq",help='base name shared by data files.')
 
-    parser.add_argument("--clip_path", type=str, default="/content/RSICC/ckpts/pytorch_model.bin.0", help="Layer NO. of intra module")
     parser.add_argument("--cross_model", default="cross-base", type=str, required=False, help="Cross module")
-
+    parser.add_argument("--decoder_model", default="decoder-base", type=str, required=False, help="Decoder module")
+    parser.add_argument("--task_type", default="retrieval", type=str, help="Point the task `retrieval` to finetune.")
+    parser.add_argument("--intra_num_hidden_layers", type=int, default=9, help="Layer NO. of intra module")
+    parser.add_argument("--clip_path", type=str, default="/content/RSICC/ckpts/pytorch_model.bin.0", help="Layer NO. of intra module")
+    parser.add_argument("--save_model_path", type=str, default="/content/RSICC/ckpts", help="Layer NO. of intra module")
+    
     parser.add_argument('--encoder_image', default="resnet101")
     parser.add_argument('--encoder_feat', default="MCCFormers_diff_as_Q")
     parser.add_argument('--decoder', default="trans", help="decoder img2txt")  #
