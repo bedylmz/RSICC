@@ -25,14 +25,12 @@ def warmup_cosine(x, warmup=0.002):
         return x / warmup
     return 0.5 * (1.0 + math.cos(math.pi * x))
 
-
 def warmup_constant(x, warmup=0.002):
     """Linearly increases learning rate over `warmup`*`t_total` (as provided to BertAdam) training steps.
     Learning rate is 1. afterwards."""
     if x < warmup:
         return x / warmup
     return 1.0
-
 
 def warmup_linear(x, warmup=0.002):
     """Specifies a triangular learning rate schedule where peak is reached at `warmup`*`t_total`-th (as provided to BertAdam) training step.
@@ -41,13 +39,11 @@ def warmup_linear(x, warmup=0.002):
         return x / warmup
     return max((x - 1.0) / (warmup - 1.0), 0)
 
-
 SCHEDULES = {
     "warmup_cosine": warmup_cosine,
     "warmup_constant": warmup_constant,
     "warmup_linear": warmup_linear,
 }
-
 
 class BertAdam(Optimizer):
     """Implements BERT version of Adam algorithm with weight decay fix.

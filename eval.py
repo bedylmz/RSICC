@@ -273,7 +273,6 @@ def evaluate_transformer(args,encoder_image,encoder_feat,decoder, clip_encoder_i
 
     return metrics, nochange_metric, change_metric
 
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Change_Captioning')
     parser.add_argument('--data_folder', default="./data/",help='folder with data files saved by create_input_files.py.')

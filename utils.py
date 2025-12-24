@@ -214,7 +214,6 @@ def create_input_files(dataset, karpathy_json_path, image_folder, captions_per_i
             with open(os.path.join(output_folder, split + '_CAPLENS_' + base_filename + '.json'), 'w') as j:
                 json.dump(caplens, j)
 
-
 def init_embedding(embeddings):
     """
     Fills embedding tensor with values from the uniform distribution.
@@ -223,7 +222,6 @@ def init_embedding(embeddings):
     """
     bias = np.sqrt(3.0 / embeddings.size(1))
     torch.nn.init.uniform_(embeddings, -bias, bias)
-
 
 def load_embeddings(emb_file, word_map):
     """
@@ -260,7 +258,6 @@ def load_embeddings(emb_file, word_map):
 
     return embeddings, emb_dim
 
-
 def clip_gradient(optimizer, grad_clip):
     """
     Clips gradients computed during backpropagation to avoid explosion of gradients.
@@ -272,43 +269,6 @@ def clip_gradient(optimizer, grad_clip):
         for param in group['params']:
             if param.grad is not None:
                 param.grad.data.clamp_(-grad_clip, grad_clip)
-
-
-def save_checkpoint(args,data_name, epoch, epochs_since_improvement, encoder_image,encoder_feat, decoder,
-                    encoder_image_optimizer,encoder_feat_optimizer, decoder_optimizer,bleu4, is_best):
-    """
-    Saves model checkpoint.
-
-    :param data_name: base name of processed dataset
-    :param epoch: epoch number
-    :param epochs_since_improvement: number of epochs since last improvement in BLEU-4 score
-    :param encoder: encoder model
-    :param decoder: decoder model
-    :param encoder_optimizer: optimizer to update encoder's weights, if fine-tuning
-    :param decoder_optimizer: optimizer to update decoder's weights
-    :param bleu4: validation BLEU-4 score for this epoch
-    :param is_best: is this checkpoint the best so far?
-    """
-    state = {'epoch': epoch,
-             'epochs_since_improvement': epochs_since_improvement,
-             'bleu-4': bleu4,
-             'encoder_image': encoder_image,
-             'encoder_feat': encoder_feat,
-             'decoder': decoder,
-             'encoder_image_optimizer': encoder_image_optimizer,
-             'encoder_feat_optimizer': encoder_feat_optimizer,
-             'decoder_optimizer': decoder_optimizer,
-             }
-    filename = 'checkpoint_' + data_name + '.pth.tar'
-    path = args.savepath #'./models_checkpoint/mymodel/3-times/'
-    if os.path.exists(path)==False:
-        os.makedirs(path)
-        # If this checkpoint is the best so far, store a copy so it doesn't get overwritten by a worse checkpoint
-    if is_best:
-        torch.save(state, os.path.join(path, 'BEST_' + filename))
-
-    # torch.save(state, os.path.join(path, 'checkpoint_' + data_name +'_epoch_'+str(epoch) + '.pth.tar'))
-
 
 class AverageMeter(object):
     """
@@ -330,7 +290,6 @@ class AverageMeter(object):
         self.count += n
         self.avg = self.sum / self.count
 
-
 def adjust_learning_rate(optimizer, shrink_factor):
     """
     Shrinks learning rate by a specified factor.
@@ -343,26 +302,6 @@ def adjust_learning_rate(optimizer, shrink_factor):
     for param_group in optimizer.param_groups:
         param_group['lr'] = param_group['lr'] * shrink_factor
     print("The new learning rate is %f\n" % (optimizer.param_groups[0]['lr'],))
-
-#
-# def accuracy_our(scores, targets, k):
-#     """
-#     Computes top-k accuracy, from predicted and true labels.
-#
-#     :param scores: scores from the model
-#     :param targets: true labels
-#     :param k: k in top-k accuracy
-#     :return: top-k accuracy
-#     """
-#     batch_size = targets.size(0)
-#     _, ind = scores.topk(k, 1, True, True)
-#     correct = ind.eq(targets.view(-1, 1).expand_as(ind))
-#     correct = correct.view(-1).float()
-#     mask = (targets.view(-1, 1).expand_as(ind)).eq(0 * targets.view(-1, 1).expand_as(ind))
-#     mask = 1-mask.view(-1).float()
-#     correct_total = (correct*mask).sum()  # 0D tensor
-#     return correct_total.item() * (100.0 / mask.sum().item())
-
 
 def accuracy(scores, targets, k):
     """
@@ -379,7 +318,6 @@ def accuracy(scores, targets, k):
     correct = ind.eq(targets.view(-1, 1).expand_as(ind))
     correct_total = correct.view(-1).float().sum()  # 0D tensor
     return correct_total.item() * (100.0 / batch_size)
-
 
 def get_eval_score(references, hypotheses):
     scorers = [
@@ -404,7 +342,6 @@ def get_eval_score(references, hypotheses):
 
     return score_dict
 
-
 def convert2words(sequences, rev_word_map):
     for l1 in sequences:
         caption = ""
@@ -413,14 +350,7 @@ def convert2words(sequences, rev_word_map):
             caption += " "
         print(caption)
 
-
-
-
-
-#---------------------------TOKENİZER-------------------------------------------
-
-import torch
-import numpy as np
+#---------------------------CUSTOM TOKENİZER-------------------------------------------
 
 def bridge_embeddings_and_transfer(rsicc_decoder, clip_model, clip_tokenizer, rsicc_word_map):
     """

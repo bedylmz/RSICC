@@ -9,14 +9,10 @@ from torch.nn.utils.rnn import pack_padded_sequence
 import argparse
 from torch.optim.lr_scheduler import StepLR
 
-from models import CNN_Encoder
-from models_RSICCformerDfusion import *
-from datasets import *
-from utils import *
+from models import MCCFormers_diff_as_Q, DecoderTransformer, CNN_Encoder
+from datasets import CaptionDataset
+from utils import AverageMeter, adjust_learning_rate, clip_gradient, bridge_embeddings_and_transfer
 from eval import evaluate_transformer
-
-
-from exploringDebugging import write_debug
 
 seed = 1
 torch.manual_seed(seed)
@@ -290,7 +286,6 @@ def train(
                 )
             )
 
-
 def key_transformation(old_key):
     if old_key == "layer.0.weight":
         return "layer.1.weight"
@@ -432,6 +427,7 @@ def save_checkpoint(args, data_name, epoch, epochs_since_improvement,
     filename = os.path.join(directory, 'checkpoint_' + data_name + '.pth.tar')
     torch.save(state, filename)
 
+#suan kullanilmiyor
 def validate_loss(val_loader, encoder_image, clip_encoder_image, encoder_feat, decoder, criterion):
     """
     Validation seti üzerinde sadece Loss hesabı yapar.
@@ -724,23 +720,6 @@ def main(args, meteor_output=None):
                 projection_optimizer = projection_optimizer,
                 projection_layer = projection_layer,
             )
-
-
-
-            """ Buna gerek yok zaten evaluate_transformer da metriklerle yapıyoruz
-            print("------------------------- Validating Loss -------------------------")
-            
-            # 1. Validation Loss Hesapla
-            current_val_loss = validate_loss(
-                val_loader, 
-                encoder_image=encoder_image,
-                clip_encoder_image=clip_encoder_image, 
-                encoder_feat=encoder_feat, 
-                decoder=decoder,
-                criterion=criterion
-            )
-            
-            print(f"Epoch: {epoch} - Validation Loss: {current_val_loss:.4f}")"""
 
             # Mevcut metrik hesaplamaları (Evaluate transformer) - LOGLAMA İÇİN KALSIN
             metrics, nochange_metrics, change_metrics = evaluate_transformer(
