@@ -1,5 +1,6 @@
-import datetime
+import os
 import time
+import json
 import torch.backends.cudnn as cudnn
 import torch.optim
 import torch.utils.data
@@ -11,21 +12,18 @@ from torch.optim.lr_scheduler import StepLR
 
 from models import MCCFormers_diff_as_Q, DecoderTransformer, CNN_Encoder
 from datasets import CaptionDataset
-from utils import AverageMeter, adjust_learning_rate, clip_gradient, bridge_embeddings_and_transfer
+from utils import AverageMeter, adjust_learning_rate, bridge_embeddings_and_transfer, accuracy
 from eval import evaluate_transformer
+
+from CLIP_modules.modeling import CLIP4IDC
+from CLIP_modules.file_utils import PYTORCH_PRETRAINED_BERT_CACHE
 
 seed = 1
 torch.manual_seed(seed)
 
-
-from CLIP_modules.modeling import CLIP4IDC
-
-from CLIP_modules.file_utils import PYTORCH_PRETRAINED_BERT_CACHE
-
 class CLIPVisualEncoder(nn.Module):
     def __init__(self, clip_model_path, target_dim):
         super().__init__()
-        # 1. Sizin kütüphanenizden CLIP modelini başlatın
         # Prepare model
         cache_dir = os.path.join(str(PYTORCH_PRETRAINED_BERT_CACHE),"distributed")
 
@@ -39,22 +37,17 @@ class CLIPVisualEncoder(nn.Module):
             task_config=args,
         )
         
-        # Sadece görsel kısmı al (örneğin visual transformer)
         self.visual_encoder = self.clip_model.clip.visual 
 
         # Modeli Float32 (Tam Hassasiyet) moduna zorla
         self.visual_encoder.float()
         self.visual_encoder.cuda()
 
-        # Modelin orijinal çıktı boyutunu al (örn: 768)
-        clip_out_dim = self.visual_encoder.output_dim 
-
         # 3. Boyut Eşitleyici (Projection Layer)
         self.projection = nn.Linear(768, target_dim) # 768 olmasının sebebi custom forward yapmamız
         self.projection.float()
 
-        # 4. İsteğe bağlı: CLIP encoder'ı dondur (freeze) 
-        # Eğer sadece feature extractor olacaksa dondurun, eğitilecekse açık bırakın.
+        # 4. CLIP encoder (freeze) 
         for param in self.visual_encoder.parameters():
             param.requires_grad = False # veya True
     
@@ -62,8 +55,6 @@ class CLIPVisualEncoder(nn.Module):
         # x shape: [Batch, 3, 224, 224]
         
         # --- CLIP'in içindeki forward akışını MANUEL yapıyoruz ---
-        # Böylece module_clip.py line 508'deki hatadan kaçınıyoruz.
-        
         with torch.no_grad():
             # 1. Conv1 (Patch Embedding)
             # Çıktı: [Batch, 768, 7, 7] (ViT-B/32 için)
@@ -86,14 +77,12 @@ class CLIPVisualEncoder(nn.Module):
             x = self.visual_encoder.ln_pre(x)
             
             # 5. Transformer Katmanları
-            x = x.permute(1, 0, 2)  # [50, Batch, 768] (Transformer NLD formatı ister)
+            x = x.permute(1, 0, 2)  # [50, Batch, 768] 
             x = self.visual_encoder.transformer(x)
             x = x.permute(1, 0, 2)  # [Batch, 50, 768] (Geri çevir)
             
             # 6. Layer Norm (Post-Transformer)
             x = self.visual_encoder.ln_post(x)
-            
-            # --- Buraya kadar özellikler çıkarıldı ---
 
         # --- RSICCformer İçin Şekillendirme ---
         
@@ -107,7 +96,7 @@ class CLIPVisualEncoder(nn.Module):
         side = int(features.shape[1] ** 0.5) # 7
         features = features.permute(0, 2, 1).view(batch_size, -1, side, side)
         
-        # 9. Interpolasyon (14x14'e büyüt) -> RSICCformer ResNet boyutu sever
+        # 9. Interpolasyon (14x14'e büyüt) 
         features = torch.nn.functional.interpolate(features, size=(14, 14), mode='bilinear', align_corners=False)
         # Shape: [Batch, 768, 14, 14]
 
@@ -117,7 +106,6 @@ class CLIPVisualEncoder(nn.Module):
         out = self.projection(features)
         
         # 11. Son Çıktı Formatı: [Batch, 1024, 14, 14]
-        # Kanalları tekrar başa al
         out = out.permute(0, 3, 1, 2)
         
         return out
@@ -172,8 +160,7 @@ def train(
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     for i, (img_pairs, caps, caplens) in enumerate(train_loader):
-        #         if i == 20:
-        #             break
+
         data_time.update(time.time() - start)
 
         # Back prop.
@@ -190,7 +177,6 @@ def train(
         caplens = caplens.to(device)
 
         # Forward prop.
-        # Eklemek ve carparak eklemeyi de dene
         imgs_A = img_pairs[:, 0, :, :, :]
         imgs_B = img_pairs[:, 1, :, :, :]
 
@@ -209,18 +195,15 @@ def train(
             final_imgs_B = (clip_imgs_B + res_imgs_B) / 2
         
         elif(args.dual_branch == True and args.feature_fusion == "concat"):
-            print("------- Flag for concat---------\n")
             final_imgs_A = torch.cat([clip_imgs_A, res_imgs_B], dim=1)
             final_imgs_B = torch.cat([clip_imgs_B, res_imgs_B], dim=1)
             final_imgs_A = projection_layer(final_imgs_A)
             final_imgs_B = projection_layer(final_imgs_B)
 
-
         fused_feat = encoder_feat(
             final_imgs_A,
             final_imgs_B,
         ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
-
 
         scores, caps_sorted, decode_lengths, sort_ind = decoder(fused_feat, caps, caplens)
 
@@ -235,18 +218,7 @@ def train(
         # Calculate loss
         loss = criterion(scores, targets)
 
-        #if encoder_image_optimizer is not None:
-        #    encoder_image_optimizer.zero_grad()
-        #    clip_encoder_optimizer.zero_grad()  
-  
         loss.backward()
-
-
-        # Clip gradients
-        #if args.grad_clip is not None:
-        #    clip_gradient(decoder_optimizer, args.grad_clip)
-        #    if encoder_image_optimizer is not None:
-        #        clip_gradient(encoder_image_optimizer, args.grad_clip)
 
         # Update weights
         decoder_optimizer.step()
@@ -255,14 +227,7 @@ def train(
         encoder_feat_optimizer.step()
         encoder_feat_lr_scheduler.step()
 
-        #encoder_image_optimizer.step()
-
-        #encoder_image_lr_scheduler.step()
-   
         clip_encoder_optimizer.step()
-
-        #if clip_encoder_scheduler is not None:
-        #    clip_encoder_scheduler.step()
 
         # Keep track of metrics
         top5 = accuracy(scores, targets, 1)
@@ -478,11 +443,8 @@ def main(args, meteor_output=None):
     start_epoch = 0
     best_bleu4 = 0.0  # BLEU-4 score right now
     epochs_since_improvement = 0  # keeps track of number of epochs since there's been an improvement in validation BLEU
-    # start_epoch döngüsünden önce:
-    best_val_loss = float('inf')  # Sonsuz ile başlatıyoruz, azaldıkça güncelleyeceğiz.
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # sets device for model and PyTorch tensors
-    # device = torch.device("cpu")  # sets device for model and PyTorch tensors
 
     print(f"CUDA available: {torch.cuda.is_available()}")
 
@@ -499,32 +461,15 @@ def main(args, meteor_output=None):
     # Initialize
     # Encoder
     encoder_image = CNN_Encoder(NetType=args.encoder_image, method=args.decoder)
-    #clip_encoder_image = model_arrange.load_model("C:/Users/AliCan/Desktop/clip4idc/trained_model_4090/pytorch_model.bin.7")
-    #clip_encoder_image = model_arrange.load_model("C:/Users/AliCan/Desktop/clip4idc/ckpts/caption/pytorch_model.bin.9")
-
-    # Retrieval Trained clip 
-    #clip_encoder_image = model_arrange.load_model("/content/RSICC/ckpts/pytorch_model.bin.0")
-    # encoder_image2 = CNN_Encoder(NetType=args.encoder_image, method=args.decoder)
-
-    # encoder_image.fine_tune(args.fine_tune_encoder)
-    # Weightleri yazdir
-
     # set the encoder_dim
     encoder_image_dim = 1024 # resnet101
-    # filename = os.listdir(args.checkpoint)
-    # checkpoint_path = os.path.join(args.checkpoint, filename[0])
-    # print(args.checkpoint + filename[0])
-    # checkpoint = torch.load(checkpoint_path, map_location=str(device))
-    # encoder_image2 = checkpoint['encoder_image']
-    # encoder_feat2 = checkpoint['encoder_feat']
-    # decoder2 = checkpoint['decoder']
 
     if args.encoder_feat == "MCCFormers_diff_as_Q":
         encoder_feat = MCCFormers_diff_as_Q(
             feature_dim=encoder_image_dim,
             dropout=0.5,
-            h=14, # 14 ten 14 çıkardım hadi bakalım demet akalın
-            w=14, # yukardakinin aynısı
+            h=14,
+            w=14,
             d_model=512,
             n_head=args.n_heads,
             n_layers=args.n_layers,
@@ -552,10 +497,8 @@ def main(args, meteor_output=None):
     if args.checkpoint is not "None":
         filename = os.listdir(args.checkpoint)
         checkpoint_path = os.path.join(args.checkpoint, filename[0])
-        # print(args.checkpoint + filename[0])
         checkpoint = torch.load(checkpoint_path, map_location=str(device))
 
-    # encoder_image2 = checkpoint['encoder_image']
     encoder_image_lr_scheduler = (
         StepLR(encoder_image_optimizer, step_size=900, gamma=1) if args.fine_tune_encoder else None
     )
@@ -592,15 +535,12 @@ def main(args, meteor_output=None):
     criterion = nn.CrossEntropyLoss(ignore_index=0).to(device)
 
     # Custom dataloaders
-    # normalize seyleri degismeli
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    # pin_memory: If True, the data loader will copy Tensors into CUDA pinned memory before returning them.
-    # If your data elements are a custom type, or your collate_fn returns a batch that is a custom type.
     # Önce Resize ekliyoruz, sonra Normalize yapıyoruz
     train_loader = torch.utils.data.DataLoader(
         CaptionDataset(args.data_folder, args.data_name, "TRAIN", 
                     transform=transforms.Compose([
-                        transforms.Resize((224, 224)),  # <--- BURAYI EKLEYİN
+                        transforms.Resize((224, 224)),
                         normalize
                     ])),
         batch_size=args.batch_size,
@@ -608,68 +548,21 @@ def main(args, meteor_output=None):
         num_workers=args.workers,
         pin_memory=True,
     )
-    
-    # Validation Loader (Loss hesabı için)
-    val_loader = torch.utils.data.DataLoader(
-        CaptionDataset(args.data_folder, args.data_name, "VAL", 
-                    transform=transforms.Compose([
-                        transforms.Resize((224, 224)),
-                        normalize
-                    ])),
-        batch_size=args.batch_size,
-        shuffle=False, # Validation için shuffle gerekmez
-        num_workers=args.workers,
-        pin_memory=True,
-    )
 
-    num_train_optimization_steps = len(train_loader) * args.epochs 
-
-    # 1. Encoder'ı Hazırla
-    # --- KULLANIM ---
-    # Eğitimde kullandığınız intra layer sayısını (args.intra_num_hidden_layers) buraya yazın.
-    # Kodlarınızda varsayılan değer 9 görünüyordu.
-
+    # ------------------------------ CLIP ENTEGRASYONU ------------------------------
     Clip_visual_encoder_module = CLIPVisualEncoder(args.clip_path,1024)
 
-    # Wrapper'ın kendisini değişkene ata!
     clip_encoder_image = Clip_visual_encoder_module
 
     clip_encoder_image_optimizer = torch.optim.Adam([
-    # 1. CLIP Visual Encoder: Çok düşük LR (Örn: 1e-6 veya 5e-6)
-    {'params': clip_encoder_image.visual_encoder.parameters(), 'lr': 1e-6},
-    
-    # 2. Sizin Eklediğiniz Projection Layer: Orta seviye LR (Örn: 1e-4)
-    {'params': clip_encoder_image.projection.parameters(), 'lr': 1e-4},
-    
-    ])
-
-    # GPU'ya taşıdığınızdan emin olun (Sınıf içinde yaptıysanız bile garanti olsun)
+        {'params': clip_encoder_image.visual_encoder.parameters(), 'lr': 1e-6},
+        {'params': clip_encoder_image.projection.parameters(), 'lr': 1e-4},])
     clip_encoder_image = clip_encoder_image.cuda()
 
     clip_encoder_image.train()
+    # ------------------------------ CLIP ENTEGRASYONU ------------------------------
     
-
-    """ with torch.no_grad():
-        # CLIP Token Embedding ağırlıklarını al
-        # clip_weights shape: [49408, 512] (ViT-B/32 için)
-        clip_weights = clip_encoder_image.clip_model.clip.token_embedding.weight 
-        
-        # Decoder'a kopyala
-        decoder.vocab_embedding.weight.data.copy_(clip_weights)
-        
-        # İsterseniz dondurun (Freeze)
-        # decoder.vocab_embedding.weight.requires_grad = False"""
-    #clip_encoder_image = load_trained_visual_encoder("/content/RSICC/pytorch_model.bin.0", device)
-    #print("Visual Encoder başarıyla ayıklandı.")
-
-    """clip_encoder_optimizer, clip_encoder_scheduler, clip_encoder_image = prep_optimizer(
-            args,
-            clip_encoder_image,
-            device,
-            num_train_optimization_steps
-        )"""
-    
-#------------------------TOKENİZER----------------
+    #------------------------ TEXT ENCODER ENTEGRASYONU ----------------
     if(args.clip_text_encoder):
         from CLIP_modules.tokenization_clip import SimpleTokenizer
 
@@ -683,23 +576,23 @@ def main(args, meteor_output=None):
             clip_tokenizer=clip_tokenizer, 
             rsicc_word_map=word_map
         )
+    #------------------------ TEXT ENCODER ENTEGRASYONU ----------------
 
-#------------------------TOKENİZER----------------
+    #------------------------ DUAL BRANCH ENTEGRASYONU (CONCAT)----------------
 
-    # main fonksiyonu içerisinde veya model init kısmında:
-    # 2048 giriş kanalı -> 1024 çıkış kanalı, 1x1 kernel
     projection_layer = nn.Conv2d(2048, 1024, kernel_size=1).cuda()
 
-    # Bu katmanın optimizer'a dahil edilmesi gerekir!
-    # Mevcut optimizerlardan birine ekleyebilirsiniz veya yeni bir optimizer tanımlayabilirsiniz.
-    # Örn:
     projection_optimizer = torch.optim.Adam(projection_layer.parameters(), lr=args.encoder_lr)
+
+    #------------------------ DUAL BRANCH ENTEGRASYONU (CONCAT)----------------
+
 
     if(args.eval_mode == False):
         # Epochs
         for epoch in range(start_epoch, args.epochs):
-            # One epoch's training
+
             print(time.strftime("%m-%d  %H : %M : %S", time.localtime(time.time())))
+            
             train(
                 args,
                 train_loader=train_loader,
@@ -721,7 +614,6 @@ def main(args, meteor_output=None):
                 projection_layer = projection_layer,
             )
 
-            # Mevcut metrik hesaplamaları (Evaluate transformer) - LOGLAMA İÇİN KALSIN
             metrics, nochange_metrics, change_metrics = evaluate_transformer(
                 args, encoder_image=encoder_image,clip_encoder_image=clip_encoder_image, encoder_feat=encoder_feat, decoder=decoder
             )
@@ -754,16 +646,11 @@ def main(args, meteor_output=None):
                 break
             if epochs_since_improvement > 0 and epochs_since_improvement % 3 == 0:
                 adjust_learning_rate(decoder_optimizer, 0.7)
-                if args.fine_tune_encoder and encoder_image_optimizer is not None:
-                    print(encoder_image_optimizer)
-                    # adjust_learning_rate(encoder_optimizer, 0.8)
+
+    # ---------------------------- EVAL SECTION ----------------------------
     else:
         print(f"Loading checkpoint from {args.checkpoint_path}")
         checkpoint = torch.load(args.checkpoint_path, map_location=str(device))
-        
-        # --- CORRECT LOADING METHOD ---
-        # 1. Load weights into the EXISTING model instance using load_state_dict()
-        # 2. Wrap in try/except or if checks to handle missing keys safely
         
         if 'encoder_image' in checkpoint:
             encoder_image.load_state_dict(checkpoint['encoder_image'])
@@ -774,7 +661,7 @@ def main(args, meteor_output=None):
         if 'decoder' in checkpoint:
             decoder.load_state_dict(checkpoint['decoder'])
 
-        # Check for CLIP specifically (since it caused the previous error)
+        # Check for CLIP specifically
         if 'clip_encoder_image' in checkpoint:
             clip_encoder_image.load_state_dict(checkpoint['clip_encoder_image'])
         else:
@@ -788,7 +675,6 @@ def main(args, meteor_output=None):
             encoder_feat=encoder_feat, 
             decoder=decoder
         )
-        
 
 if __name__ == "__main__":
     folder_path = ""
@@ -799,6 +685,7 @@ if __name__ == "__main__":
     # Data parameters
     parser.add_argument("--data_folder", default="")
     parser.add_argument("--data_name", default="LEVIR_CC_5_cap_per_img_10_min_word_freq", help="base name shared by data files.")
+    
     # Model parameters
     parser.add_argument('--encoder_image', default="resnet101", help='which model does encoder use?')
     parser.add_argument("--encoder_image_model", default="clip4IDC", help="which model does encoder use?")
@@ -809,12 +696,8 @@ if __name__ == "__main__":
     parser.add_argument("--decoder_n_layers", type=int, default=1)
     parser.add_argument("--feature_dim_de", type=int, default=1024)
     parser.add_argument("--dropout", type=float, default=0.5, help="dropout")
-
     parser.add_argument("--eval_mode", type=bool, default=False)
     parser.add_argument("--checkpoint_path", type=str, default="")
-
-
-
 
     #params for CLIP4IDC implementation
     parser.add_argument("--cross_model", default="cross-base", type=str, required=False, help="Cross module")
@@ -831,7 +714,6 @@ if __name__ == "__main__":
     #params for text encoder
     parser.add_argument("--clip_text_encoder", type=bool, default=False)
 
-
     # Training parameters
     parser.add_argument("--epochs", type=int, default=40, help="number of epochs to train for (if early stopping is not triggered).")
     parser.add_argument("--stop_criteria", type=int, default=10, help="training stop if epochs_since_improvement == stop_criteria")
@@ -843,8 +725,8 @@ if __name__ == "__main__":
     parser.add_argument("--clip_encoder_lr", type=float, default=0.0001, help="learning rate for CLIP fine-tuning.")    
     parser.add_argument("--grad_clip", type=float, default=5.0, help="clip gradients at an absolute value of.")
     parser.add_argument("--fine_tune_encoder", type=bool, default=True, help="whether fine-tune encoder or not")
-
     parser.add_argument("--checkpoint", default="None", help="path to checkpoint, None if none.")
+    
     # Validation
     parser.add_argument("--Split", default="VAL", help="which")
     parser.add_argument("--beam_size", type=int, default=1, help="beam_size.")
@@ -855,7 +737,7 @@ if __name__ == "__main__":
         type=float,
         help="Proportion of training to perform linear learning rate warmup " "for. E.g., 0.1 = 10%% of training.",
     )
-    #os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+
     args = parser.parse_args()
     main(args)
     

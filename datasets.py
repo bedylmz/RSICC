@@ -38,14 +38,8 @@ class CaptionDataset(Dataset):
         self.transform = transform #None
 
         # Total number of datapoints
-        # #FIXME：original
+        # #TODO：original
         self.dataset_size = int(len(self.captions) / 1)
-
-        # FIXME:my
-        # if self.split == 'TRAIN':
-        #     self.dataset_size = int(len(self.captions)/1)
-        # else:
-        #     self.dataset_size = int(len(self.captions) / 5)
 
 
     def __getitem__(self, i):
