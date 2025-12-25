@@ -213,7 +213,6 @@ def train(
             final_imgs_B = (clip_imgs_B + res_imgs_B) / 2
         
         elif(args.dual_branch == True and args.feature_fusion == "concat"):
-            print("------- Flag for concat---------\n")
             final_imgs_A = torch.cat([clip_imgs_A, res_imgs_B], dim=1)
             final_imgs_B = torch.cat([clip_imgs_B, res_imgs_B], dim=1)
             final_imgs_A = projection_layer(final_imgs_A)
