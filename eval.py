@@ -271,7 +271,7 @@ def evaluate_transformer(args,encoder_image,encoder_feat,decoder, clip_encoder_i
     metrics = get_eval_score(references, hypotheses)
 
 
-    return metrics, nochange_metric, change_metric
+    return metrics
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Change_Captioning')
