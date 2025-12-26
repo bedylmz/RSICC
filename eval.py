@@ -2,7 +2,7 @@ import torch.optim
 import torch.utils.data
 import torchvision.transforms as transforms
 from datasets import *
-from mg_utils import *
+from utils import *
 import torch.nn.functional as F
 from tqdm import tqdm
 import argparse
