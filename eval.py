@@ -85,7 +85,7 @@ def evaluate_transformer(args,encoder_image,encoder_feat,decoder, clip_encoder_i
     loader = torch.utils.data.DataLoader(
         CaptionDataset(args.data_folder, args.data_name, args.Split, 
                        transform=transforms.Compose([
-                           transforms.Resize((224, 224)), # <-- BUNU EKLEYİN
+                           transforms.Resize((224, 224)),
                            normalize
                        ])),
         batch_size=1, shuffle=False, num_workers=0, pin_memory=True)

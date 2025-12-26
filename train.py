@@ -357,7 +357,7 @@ def prep_optimizer(args, model, device, num_train_optimization_steps, coef_lr=1.
 
 def save_checkpoint(args, data_name, epoch, epochs_since_improvement, 
                              encoder_image, encoder_feat, decoder, 
-                             encoder_image_optimizer, encoder_feat_optimizer, decoder_optimizer,
+                             encoder_image_optimizer, encoder_feat_optimizer, decoder_optimizer, mg_encoder,
                              clip_encoder_image, clip_encoder_optimizer=None, projection_layer=None, projection_optimizer=None):
     import torch
     
@@ -400,6 +400,9 @@ def save_checkpoint(args, data_name, epoch, epochs_since_improvement,
 
     if projection_optimizer is not None:
         state['projection_optimizer'] = projection_optimizer.state_dict()
+    
+    if mg_encoder is not None:
+        state['mg_encoder'] = mg_encoder.state_dict()
 
     # Kayıt Dizini Kontrolü
     directory = args.save_model_path
@@ -664,7 +667,7 @@ def main(args, meteor_output=None):
                 # Save checkpoint
                 save_checkpoint(args, "SecondCC", epoch, epochs_since_improvement, 
                                 encoder_image, encoder_feat, decoder, 
-                                encoder_image_optimizer, encoder_feat_optimizer, decoder_optimizer,
+                                encoder_image_optimizer, encoder_feat_optimizer, decoder_optimizer, mg_encoder,
                                 clip_encoder_image, clip_encoder_image_optimizer)
                 
             # Early Stopping
