@@ -258,6 +258,8 @@ def train(
         encoder_feat_optimizer.step()
         encoder_feat_lr_scheduler.step()
 
+        projection_optimizer.step()
+
         #encoder_image_optimizer.step()
 
         #encoder_image_lr_scheduler.step()
@@ -385,7 +387,7 @@ def prep_optimizer(args, model, device, num_train_optimization_steps, coef_lr=1.
 def save_checkpoint(args, data_name, epoch, epochs_since_improvement, 
                              encoder_image, encoder_feat, decoder, 
                              encoder_image_optimizer, encoder_feat_optimizer, decoder_optimizer,
-                             clip_encoder_image, clip_encoder_optimizer=None):
+                             clip_encoder_image, projection_layer=None, projection_optimizer=None, clip_encoder_optimizer=None):
     import torch
     
     """
@@ -421,6 +423,14 @@ def save_checkpoint(args, data_name, epoch, epochs_since_improvement,
     # CLIP Optimizer (Eğer gönderildiyse - Ki gönderilmeli!)
     if clip_encoder_optimizer is not None:
         state['clip_encoder_optimizer'] = clip_encoder_optimizer.state_dict()
+    
+    # projection layer encoder
+    if projection_layer is not None:
+        state['projection_layer'] = projection_layer.state_dict()
+    
+    # projection layer encoder
+    if projection_optimizer is not None:
+        state['projection_optimizer'] = projection_optimizer.state_dict()
 
     # Kayıt Dizini Kontrolü
     directory = args.save_model_path
@@ -766,7 +776,7 @@ def main(args, meteor_output=None):
                 save_checkpoint(args, "SecondCC", epoch, epochs_since_improvement, 
                                 encoder_image, encoder_feat, decoder, 
                                 encoder_image_optimizer, encoder_feat_optimizer, decoder_optimizer,
-                                clip_encoder_image, clip_encoder_image_optimizer)
+                                clip_encoder_image, clip_encoder_image_optimizer, projection_layer)
                 
             # Early Stopping
             if epochs_since_improvement == args.stop_criteria:

@@ -40,7 +40,7 @@ class CaptionDataset(Dataset):
 
         # Total number of datapoints
         # #FIXME：original
-        self.dataset_size = int(len(self.captions) / 1)
+        self.dataset_size = int(len(self.captions) / 100) #1di
 
         # FIXME:my
         # if self.split == 'TRAIN':
