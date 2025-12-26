@@ -39,7 +39,7 @@ class CaptionDataset(Dataset):
 
         # Total number of datapoints
         # #TODO：original
-        self.dataset_size = int(len(self.captions) / 100)
+        self.dataset_size = int(len(self.captions) / 1)
 
 
     def __getitem__(self, i):
