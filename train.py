@@ -10,13 +10,15 @@ from torch.nn.utils.rnn import pack_padded_sequence
 import argparse
 from torch.optim.lr_scheduler import StepLR
 
-from models import MCCFormers_diff_as_Q, DecoderTransformer, CNN_Encoder
+from mg_models import MCCFormers_diff_as_Q, DecoderTransformer, CNN_Encoder
 from datasets import CaptionDataset
 from utils import AverageMeter, adjust_learning_rate, bridge_embeddings_and_transfer, accuracy
 from eval import evaluate_transformer
 
 from CLIP_modules.modeling import CLIP4IDC
 from CLIP_modules.file_utils import PYTORCH_PRETRAINED_BERT_CACHE
+
+from mg_models.transformer import MemoryAugmentedEncoder, GlobalGroupingAttention_with_DC
 
 seed = 1
 torch.manual_seed(seed)
@@ -128,7 +130,8 @@ def train(
     decoder_lr_scheduler,
     epoch,
     projection_layer,
-    projection_optimizer
+    projection_optimizer,
+    mg_encoder,
 ):
     """
     Performs one epoch's training.
@@ -199,6 +202,13 @@ def train(
             final_imgs_B = torch.cat([clip_imgs_B, res_imgs_B], dim=1)
             final_imgs_A = projection_layer(final_imgs_A)
             final_imgs_B = projection_layer(final_imgs_B)
+
+        elif(args.dual_branch == True and args.feature_fusion == "mg"):
+            final_imgs_A = torch.cat([clip_imgs_A, res_imgs_B], dim=1)
+            final_imgs_B = torch.cat([clip_imgs_B, res_imgs_B], dim=1)
+            final_imgs_A, mask_enc = mg_encoder(res_imgs_A, clip_imgs_A, None, isencoder=True)
+            final_imgs_B, mask_enc = mg_encoder(res_imgs_B, clip_imgs_B, None, isencoder=True)
+            
 
         fused_feat = encoder_feat(
             final_imgs_A,
@@ -594,6 +604,14 @@ def main(args, meteor_output=None):
 
     #------------------------ DUAL BRANCH ENTEGRASYONU (CONCAT)----------------
 
+    #------------------------ MG TRANSFORMER ----------------
+
+    mg_encoder = MemoryAugmentedEncoder(3, 0, attention_module=GlobalGroupingAttention_with_DC)
+
+    #------------------------ MG TRANSFORMER ----------------
+
+
+
 
     if(args.eval_mode == False):
         # Epochs
@@ -620,6 +638,7 @@ def main(args, meteor_output=None):
                 epoch=epoch,
                 projection_optimizer = projection_optimizer,
                 projection_layer = projection_layer,
+                mg_encoder = mg_encoder,
             )
 
             metrics = evaluate_transformer(
@@ -717,7 +736,7 @@ if __name__ == "__main__":
     
     #params for dual branch
     parser.add_argument("--dual_branch", type=bool, default=False)
-    parser.add_argument("--feature_fusion", type=str, default="concat")
+    parser.add_argument("--feature_fusion", type=str, default="concat") #concat, addition, mg
 
     #params for text encoder
     parser.add_argument("--clip_text_encoder", type=bool, default=False)

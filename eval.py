@@ -286,6 +286,8 @@ if __name__ == '__main__':
     parser.add_argument('--beam_size', type=int, default=1, help='beam_size.')
     parser.add_argument('--path', default="./models_checkpoint/", help='model checkpoint.')
 
+    
+
     args = parser.parse_args()
 
     filename = os.listdir(args.path)
