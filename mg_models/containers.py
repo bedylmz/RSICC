@@ -1,6 +1,6 @@
 from contextlib import contextmanager
 from torch import nn
-from utils.typing import *
+from mg_utils.typing import *
 
 
 class Module(nn.Module):

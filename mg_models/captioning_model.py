@@ -1,6 +1,6 @@
 import torch
 from torch import distributions
-import utils
+import mg_utils
 from mg_models.containers import Module
 from mg_models.beam_search import *
 
@@ -30,9 +30,9 @@ class CaptioningModel(Module):
         outputs = torch.cat([o.unsqueeze(1) for o in outputs], 1)
         return outputs
 
-    def test(self, visual: utils.TensorOrSequence, max_len: int, eos_idx: int, **kwargs) -> utils.Tuple[torch.Tensor, torch.Tensor]:
-        b_s = utils.get_batch_size(visual)
-        device = utils.get_device(visual)
+    def test(self, visual: mg_utils.TensorOrSequence, max_len: int, eos_idx: int, **kwargs) -> mg_utils.Tuple[torch.Tensor, torch.Tensor]:
+        b_s = mg_utils.get_batch_size(visual)
+        device = mg_utils.get_device(visual)
         outputs = []
         log_probs = []
 
@@ -48,8 +48,8 @@ class CaptioningModel(Module):
 
         return torch.cat(outputs, 1), torch.cat(log_probs, 1)
 
-    def sample_rl(self, visual: utils.TensorOrSequence, max_len: int, **kwargs) -> utils.Tuple[torch.Tensor, torch.Tensor]:
-        b_s = utils.get_batch_size(visual)
+    def sample_rl(self, visual: mg_utils.TensorOrSequence, max_len: int, **kwargs) -> mg_utils.Tuple[torch.Tensor, torch.Tensor]:
+        b_s = mg_utils.get_batch_size(visual)
         outputs = []
         log_probs = []
 
@@ -64,7 +64,7 @@ class CaptioningModel(Module):
 
         return torch.cat(outputs, 1), torch.cat(log_probs, 1)
 
-    def beam_search(self, visual: utils.TensorOrSequence, visual_gl: utils.TensorOrSequence,detections_mask: utils.TensorOrSequence,
+    def beam_search(self, visual: mg_utils.TensorOrSequence, visual_gl: mg_utils.TensorOrSequence,detections_mask: mg_utils.TensorOrSequence,
                     max_len: int, eos_idx: int, beam_size: int, out_size=1,return_probs=False, **kwargs):
         bs = BeamSearch(self, max_len, eos_idx, beam_size)
         return bs.apply(visual, visual_gl,detections_mask, out_size, return_probs, **kwargs)

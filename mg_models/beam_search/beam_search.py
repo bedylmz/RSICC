@@ -1,5 +1,5 @@
 import torch
-import utils
+import mg_utils
 
 
 class BeamSearch(object):
@@ -32,7 +32,7 @@ class BeamSearch(object):
 
         return fn
 
-    def _expand_visual(self, visual: utils.TensorOrSequence, cur_beam_size: int, selected_beam: torch.Tensor):
+    def _expand_visual(self, visual: mg_utils.TensorOrSequence, cur_beam_size: int, selected_beam: torch.Tensor):
         if isinstance(visual, torch.Tensor):
             visual_shape = visual.shape
             visual_exp_shape = (self.b_s, cur_beam_size) + visual_shape[1:]
@@ -57,9 +57,9 @@ class BeamSearch(object):
             visual = tuple(new_visual)
         return visual
 
-    def apply(self, visual: utils.TensorOrSequence, visual_gl: utils.TensorOrSequence,detections_mask:utils.TensorOrSequence, out_size=1, return_probs=False, **kwargs):
-        self.b_s = utils.get_batch_size(visual)
-        self.device = utils.get_device(visual)
+    def apply(self, visual: mg_utils.TensorOrSequence, visual_gl: mg_utils.TensorOrSequence,detections_mask:mg_utils.TensorOrSequence, out_size=1, return_probs=False, **kwargs):
+        self.b_s = mg_utils.get_batch_size(visual)
+        self.device = mg_utils.get_device(visual)
         self.seq_mask = torch.ones((self.b_s, self.beam_size, 1), device=self.device)
         self.seq_logprob = torch.zeros((self.b_s, 1, 1), device=self.device)
         self.log_probs = []
@@ -101,7 +101,7 @@ class BeamSearch(object):
         selected_logprob, selected_idx = selected_logprob[:, :self.beam_size], selected_idx[:, :self.beam_size]
         return selected_idx, selected_logprob
 
-    def iter(self, t: int, visual: utils.TensorOrSequence,visual_gl:utils.TensorOrSequence,detections_mask:utils.TensorOrSequence,outputs, return_probs, **kwargs):
+    def iter(self, t: int, visual: mg_utils.TensorOrSequence,visual_gl:mg_utils.TensorOrSequence,detections_mask:mg_utils.TensorOrSequence,outputs, return_probs, **kwargs):
         cur_beam_size = 1 if t == 0 else self.beam_size
         # word_logprob = self.model.step(t, self.selected_words, visual, visual_gl, None, mode='feedback', **kwargs)
 

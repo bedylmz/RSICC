@@ -10,7 +10,7 @@ from torch.nn.utils.rnn import pack_padded_sequence
 import argparse
 from torch.optim.lr_scheduler import StepLR
 
-from mg_models import MCCFormers_diff_as_Q, DecoderTransformer, CNN_Encoder
+from models import MCCFormers_diff_as_Q, DecoderTransformer, CNN_Encoder
 from datasets import CaptionDataset
 from utils import AverageMeter, adjust_learning_rate, bridge_embeddings_and_transfer, accuracy
 from eval import evaluate_transformer
