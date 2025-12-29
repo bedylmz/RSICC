@@ -682,6 +682,9 @@ def main(args, meteor_output=None):
     else:
         print(f"Loading checkpoint from {args.checkpoint_path}")
         checkpoint = torch.load(args.checkpoint_path, map_location=str(device))
+
+        mg_encoder = None
+        projection_layer = None
         
         if 'encoder_image' in checkpoint:
             encoder_image.load_state_dict(checkpoint['encoder_image'])
@@ -692,11 +695,33 @@ def main(args, meteor_output=None):
         if 'decoder' in checkpoint:
             decoder.load_state_dict(checkpoint['decoder'])
 
+        if 'projection_layer' in checkpoint:
+            projection_layer.load_state_dict(checkpoint['projection_layer'])
+
+        if 'mg_encoder' in checkpoint:
+            mg_encoder.load_state_dict(checkpoint['mg_encoder'])
+
         # Check for CLIP specifically
         if 'clip_encoder_image' in checkpoint:
             clip_encoder_image.load_state_dict(checkpoint['clip_encoder_image'])
         else:
             print("WARNING: 'clip_encoder_image' weights not found in checkpoint. Using initialized weights.")
+
+        #------------------------ TEXT ENCODER ENTEGRASYONU ----------------
+        if(args.clip_text_encoder):
+            from CLIP_modules.tokenization_clip import SimpleTokenizer
+
+            clip_tokenizer = SimpleTokenizer()
+            clip_model_ref = clip_encoder_image.clip_model.clip
+            
+            # Köprü fonksiyonunu çalıştır
+            bridge_embeddings_and_transfer(
+                rsicc_decoder=decoder, 
+                clip_model=clip_model_ref, 
+                clip_tokenizer=clip_tokenizer, 
+                rsicc_word_map=word_map
+            )
+        #------------------------ TEXT ENCODER ENTEGRASYONU ----------------
 
         # Now run evaluation
         metrics = evaluate_transformer(
@@ -704,7 +729,9 @@ def main(args, meteor_output=None):
             encoder_image=encoder_image,
             clip_encoder_image=clip_encoder_image, 
             encoder_feat=encoder_feat, 
-            decoder=decoder
+            decoder=decoder,
+            mg_encoder=mg_encoder,
+            projection_layer=projection_layer
         )
 
 if __name__ == "__main__":

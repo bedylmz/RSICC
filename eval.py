@@ -54,17 +54,28 @@ def save_captions(args, word_map, hypotheses, references):
 def get_key(dict_, value):
   return [k for k, v in dict_.items() if v == value]
 
-def evaluate_transformer(args,encoder_image,encoder_feat,decoder, clip_encoder_image):
+def evaluate_transformer(args,encoder_image,encoder_feat,decoder, clip_encoder_image, projection_layer=None, mg_encoder=None):
     # Load model
-    encoder_image = encoder_image.to(device)
-    encoder_image.eval()
     encoder_feat = encoder_feat.to(device)
     encoder_feat.eval()
     decoder = decoder.to(device)
     decoder.eval()
 
-    clip_encoder_image.to(device)
-    clip_encoder_image.eval()
+    if (encoder_image != None):
+        encoder_image.to(device)
+        encoder_image.eval()
+
+    if (clip_encoder_image != None):
+        clip_encoder_image.to(device)
+        clip_encoder_image.eval()
+
+    if (projection_layer != None):
+        projection_layer.to(device)
+        projection_layer.eval()
+
+    if (mg_encoder != None):
+        mg_encoder.to(device)
+        mg_encoder.eval()
 
 
     # Load word map (word2ix)
@@ -115,12 +126,50 @@ def evaluate_transformer(args,encoder_image,encoder_feat,decoder, clip_encoder_i
             # Move to GPU device, if available
             image_pairs = image_pairs.to(device)  # [1, 2, 3, 256, 256]
 
+            """
+            OLD
             # Encode
             imgs_A = image_pairs[:, 0, :, :, :]
             imgs_B = image_pairs[:, 1, :, :, :]
             imgs_A = clip_encoder_image(imgs_A) # encoder_image dan buna çevrildi
             imgs_B = clip_encoder_image(imgs_B)  # encoder_image :[1, 1024,14,14]
-            encoder_out = encoder_feat(imgs_A, imgs_B) # encoder_out: (S, batch, feature_dim)
+            encoder_out = encoder_feat(imgs_A, imgs_B) # encoder_out: (S, batch, feature_dim)"""
+
+            # Forward prop.
+            imgs_A = image_pairs[:, 0, :, :, :]
+            imgs_B = image_pairs[:, 1, :, :, :]
+
+            clip_imgs_A = clip_encoder_image(imgs_A)
+            clip_imgs_B = clip_encoder_image(imgs_B)
+
+            if(args.dual_branch == True ):
+                res_imgs_A = encoder_image(imgs_A)
+                res_imgs_B = encoder_image(imgs_B)
+
+            final_imgs_A = clip_encoder_image(imgs_A)
+            final_imgs_B = clip_encoder_image(imgs_B)
+
+            if(args.dual_branch == True and args.feature_fusion == "addition"):
+                final_imgs_A = (clip_imgs_A + res_imgs_A) / 2
+                final_imgs_B = (clip_imgs_B + res_imgs_B) / 2
+            
+            elif(args.dual_branch == True and args.feature_fusion == "concat"):
+                final_imgs_A = torch.cat([clip_imgs_A, res_imgs_B], dim=1)
+                final_imgs_B = torch.cat([clip_imgs_B, res_imgs_B], dim=1)
+                final_imgs_A = projection_layer(final_imgs_A)
+                final_imgs_B = projection_layer(final_imgs_B)
+
+            elif(args.dual_branch == True and args.feature_fusion == "mg"):
+                final_imgs_A = torch.cat([clip_imgs_A, res_imgs_B], dim=1)
+                final_imgs_B = torch.cat([clip_imgs_B, res_imgs_B], dim=1)
+                final_imgs_A, mask_enc = mg_encoder(res_imgs_A, clip_imgs_A, None, isencoder=True)
+                final_imgs_B, mask_enc = mg_encoder(res_imgs_B, clip_imgs_B, None, isencoder=True)
+                
+            encoder_out = encoder_feat(
+                final_imgs_A,
+                final_imgs_B,
+            ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
+
 
             tgt = torch.zeros(52, k).to(device).to(torch.int64)
             tgt_length = tgt.size(0)
