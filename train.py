@@ -98,8 +98,9 @@ class CLIPVisualEncoder(nn.Module):
         side = int(features.shape[1] ** 0.5) # 7
         features = features.permute(0, 2, 1).view(batch_size, -1, side, side)
         
-        # 9. Interpolasyon (14x14'e büyüt) 
-        features = torch.nn.functional.interpolate(features, size=(14, 14), mode='bilinear', align_corners=False)
+        # 9. Interpolasyon (14x14'e büyüt)
+        if features.shape[2] != 14: #(eğer ViT 16 kullanılıyorsa hiç yapma)
+            features = torch.nn.functional.interpolate(features, size=(14, 14), mode='bilinear', align_corners=False)
         # Shape: [Batch, 768, 14, 14]
 
         # 10. Projection (Boyut Eşitleme)
