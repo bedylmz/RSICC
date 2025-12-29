@@ -682,9 +682,6 @@ def main(args, meteor_output=None):
     else:
         print(f"Loading checkpoint from {args.checkpoint_path}")
         checkpoint = torch.load(args.checkpoint_path, map_location=str(device))
-
-        mg_encoder = None
-        projection_layer = None
         
         if 'encoder_image' in checkpoint:
             encoder_image.load_state_dict(checkpoint['encoder_image'])
