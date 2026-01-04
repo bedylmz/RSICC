@@ -166,18 +166,18 @@ class AdaptLayerClip(nn.Module):
         return c_feat
 
 def train(
-    args,
-    train_loader,
-    clip_encoder_image,
-    encoder_feat,
-    decoder,
-    criterion,
-    encoder_image_optimizer,
-    encoder_feat_optimizer,
-    encoder_feat_lr_scheduler,
-    decoder_optimizer,
-    decoder_lr_scheduler,
-    epoch,
+    args= None,
+    train_loader= None,
+    clip_encoder_image= None,
+    encoder_feat= None,
+    decoder= None,
+    criterion= None,
+    encoder_image_optimizer= None,
+    encoder_feat_optimizer= None,
+    encoder_feat_lr_scheduler= None,
+    decoder_optimizer= None,
+    decoder_lr_scheduler= None,
+    epoch= None,
     
     encoder_image = None,
     clip_encoder_optimizer = None,
@@ -236,46 +236,45 @@ def train(
 
         
         if(args.dual_branch == True ):
-            b, t, c, h, w = img_pairs.shape
-            imgs_full = img_pairs.view(-1, c, h, w) 
+          b, t, c, h, w = img_pairs.shape
+          imgs_full = img_pairs.view(-1, c, h, w) 
 
-            # 2. Pass the flattened pairs and set frames to 2
-            # Note: Remove parentheses from .shape (it is a property, not a function)
-            clip_out = clip_encoder_image(imgs_full, 2)
-            clip_out_A = clip_out[:,0,:] # 768 100 b
-            clip_out_B = clip_out[:,50,:]
-            resnet_A = encoder_image(imgs_A)
-            resnet_B = encoder_image(imgs_B)
+          # 2. Pass the flattened pairs and set frames to 2
+          # Note: Remove parentheses from .shape (it is a property, not a function)
+          clip_out = clip_encoder_image(imgs_full, 2)
+          clip_out_A = clip_out[:,0,:] # 768 100 b
+          clip_out_B = clip_out[:,50,:]
+          resnet_A = encoder_image(imgs_A)
+          resnet_B = encoder_image(imgs_B)
 
-            resnet_A_adapt, clip_A_adapt = adaptLayer(resnet_A, clip_out_A)
-            resnet_B_adapt, clip_B_adapt = adaptLayer(resnet_B, clip_out_B)
-            resnet_A_normed, clip_A_normed = layerNormalizeLayer(resnet_A_adapt, clip_A_adapt)
-            resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B_adapt, clip_B_adapt)
+          resnet_A_adapt, clip_A_adapt = adaptLayer(resnet_A, clip_out_A)
+          resnet_B_adapt, clip_B_adapt = adaptLayer(resnet_B, clip_out_B)
+          resnet_A_normed, clip_A_normed = layerNormalizeLayer(resnet_A_adapt, clip_A_adapt)
+          resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B_adapt, clip_B_adapt)
 
-            final_A = torch.cat([resnet_A_normed, clip_A_normed], dim=1)
-            final_B = torch.cat([resnet_B_normed, clip_B_normed], dim=1)
+          final_A = torch.cat([resnet_A_normed, clip_A_normed], dim=1)
+          final_B = torch.cat([resnet_B_normed, clip_B_normed], dim=1)
 
-            fused_feat = encoder_feat(
-                final_A,
-                final_B,
-            ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
-
+          fused_feat = encoder_feat(
+              final_A,
+              final_B,
+          ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
         else:
-            b, t, c, h, w = img_pairs.shape
-            imgs_full = img_pairs.view(-1, c, h, w) 
+          b, t, c, h, w = img_pairs.shape
+          imgs_full = img_pairs.view(-1, c, h, w) 
 
-            # 2. Pass the flattened pairs and set frames to 2
-            # Note: Remove parentheses from .shape (it is a property, not a function)
-            clip_out = clip_encoder_image(imgs_full, 2)
-            clip_out_A = clip_out[:,0,:] # 768 100 b
-            clip_out_B = clip_out[:,50,:]
-            clip_out_A = adaptLayerClip(clip_out_A)
-            clip_out_B = adaptLayerClip(clip_out_B)
+          # 2. Pass the flattened pairs and set frames to 2
+          # Note: Remove parentheses from .shape (it is a property, not a function)
+          clip_out = clip_encoder_image(imgs_full, 2)
+          clip_out_A = clip_out[:,0,:] # 768 100 b
+          clip_out_B = clip_out[:,50,:]
+          clip_out_A = adaptLayerClip(clip_out_A)
+          clip_out_B = adaptLayerClip(clip_out_B)
 
-            fused_feat = encoder_feat(
-                clip_out_A,
-                clip_out_B,
-            ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
+          fused_feat = encoder_feat(
+              clip_out_A,
+              clip_out_B,
+          ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
 
         scores, caps_sorted, decode_lengths, sort_ind = decoder(fused_feat, caps, caplens)
 
@@ -413,20 +412,24 @@ def prep_optimizer(args, model, device, num_train_optimization_steps, coef_lr=1.
     model.to(device)
     return optimizer, scheduler, model
 
-def save_checkpoint(args, 
-                    data_name, 
-                    epoch, 
-                    epochs_since_improvement, 
-                    encoder_image, 
-                    encoder_feat, 
-                    decoder, 
-                    encoder_feat_optimizer, 
-                    decoder_optimizer, 
-                    clip_encoder_image,
+def save_checkpoint(args= None, 
+                    data_name= None, 
+                    epoch= None, 
+                    epochs_since_improvement= None,
+
+                    clip_encoder_image= None,
+                    encoder_feat= None,
+                    decoder= None,
+                    encoder_image_optimizer= None,
+                    encoder_feat_optimizer= None,
+                    decoder_optimizer= None,
+                    
+                    encoder_image = None,
+                    clip_encoder_optimizer = None,
                     layerNormalizeLayer = None,
                     adaptLayer = None,
                     adaptLayerClip = None,
-                    encoder_image_optimizer = None,):
+                    encoder_image_lr_scheduler = None,):
     import torch
     
     """
@@ -452,7 +455,6 @@ def save_checkpoint(args,
         'encoder_feat_optimizer': encoder_feat_optimizer.state_dict(),
         'decoder_optimizer': decoder_optimizer.state_dict(),
     }
-
     # Eski ResNet encoder varsa (Opsiyonel)
     if encoder_image is not None:
         state['encoder_image'] = encoder_image.state_dict()
@@ -465,6 +467,10 @@ def save_checkpoint(args,
         state['adaptLayer'] = adaptLayer.state_dict()
     if adaptLayerClip is not None:
         state['adaptLayerClip'] = adaptLayerClip.state_dict()
+    if clip_encoder_optimizer is not None:
+        state['clip_encoder_optimizer'] = clip_encoder_optimizer.state_dict()
+    if encoder_image_lr_scheduler is not None:
+        state['encoder_image_lr_scheduler'] = encoder_image_lr_scheduler.state_dict()
 
     # Kayıt Dizini Kontrolü
     directory = args.save_model_path
@@ -547,11 +553,11 @@ def main(args, meteor_output=None):
     if(args.dual_branch == True):
         encoder_image = CNN_Encoder(NetType=args.encoder_image, method=args.decoder)
         # set the encoder_dim
-        encoder_image_dim = 1024 # resnet101
+    encoder_image_dim = 1024 # resnet101
 
     if args.encoder_feat == "MCCFormers_diff_as_Q":
         encoder_feat = MCCFormers_diff_as_Q(
-            feature_dim=encoder_image_dim,
+            feature_dim=1024,
             dropout=0.5,
             h=14,
             w=14,
@@ -711,9 +717,22 @@ def main(args, meteor_output=None):
                     epoch=epoch,
                     adaptLayerClip= adaptLayerClip,
                 )
-            metrics = evaluate_transformer(
-                args, encoder_image=encoder_image,clip_encoder_image=clip_encoder_image, encoder_feat=encoder_feat, decoder=decoder
-            )
+            if(args.dual_branch == True):
+              metrics = evaluate_transformer(
+                    args, 
+                    encoder_image=encoder_image, 
+                    clip_encoder_image=clip_encoder_image, 
+                    encoder_feat=encoder_feat,
+                    decoder=decoder,
+                    layerNormalizeLayer=layerNormalizeLayer,
+                    adaptLayer=adaptLayer)
+            else:
+              metrics = evaluate_transformer(
+                    args, 
+                    clip_encoder_image=clip_encoder_image, 
+                    encoder_feat=encoder_feat,
+                    decoder=decoder,
+                    adaptLayerClip=adaptLayerClip)
 
             # -----------------------------------------------------------------------------------------------------
             # One epoch's validation
@@ -732,10 +751,33 @@ def main(args, meteor_output=None):
             if is_best:
                 print("-------------------------checkpoint Saved-------------------------")
                 # Save checkpoint
-                save_checkpoint(args, "SecondCC", epoch, epochs_since_improvement, 
-                                encoder_image, encoder_feat, decoder, 
-                                encoder_image_optimizer, encoder_feat_optimizer, decoder_optimizer, mg_encoder,
-                                clip_encoder_image)
+                if(args.dual_branch == True):
+                    save_checkpoint(args,
+                                    "SecondCC",
+                                    epoch = epoch,
+                                    epochs_since_improvement = epochs_since_improvement, 
+                                    encoder_image = encoder_image,
+                                    encoder_feat=encoder_feat,
+                                    decoder=decoder, 
+                                    encoder_image_optimizer=encoder_image_optimizer,
+                                    encoder_feat_optimizer=encoder_feat_optimizer,
+                                    decoder_optimizer=decoder_optimizer, 
+                                    clip_encoder_image=clip_encoder_image,
+                                    adaptLayer=adaptLayer,
+                                    layerNormalizeLayer=layerNormalizeLayer,
+                                    )
+                else:
+                    save_checkpoint(args,
+                                    "SecondCC",
+                                    epoch = epoch,
+                                    epochs_since_improvement = epochs_since_improvement, 
+                                    encoder_feat=encoder_feat,
+                                    decoder=decoder, 
+                                    encoder_feat_optimizer=encoder_feat_optimizer,
+                                    decoder_optimizer=decoder_optimizer, 
+                                    clip_encoder_image=clip_encoder_image,
+                                    adaptLayerClip=adaptLayerClip,
+                                    )
                 
             # Early Stopping
             if epochs_since_improvement == args.stop_criteria:
@@ -821,7 +863,7 @@ if __name__ == "__main__":
     parser.add_argument("--save_model_path", type=str, default="/content/RSICC/ckpts", help="Layer NO. of intra module")
     
     #params for dual branch
-    parser.add_argument("--dual_branch", type=bool, default=False)
+    parser.add_argument("--dual_branch", action='store_true', help="Enable dual branch")
 
     #params for text encoder
     parser.add_argument("--clip_text_encoder", type=bool, default=False)

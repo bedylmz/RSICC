@@ -54,7 +54,17 @@ def save_captions(args, word_map, hypotheses, references):
 def get_key(dict_, value):
   return [k for k, v in dict_.items() if v == value]
 
-def evaluate_transformer(args,encoder_image,encoder_feat,decoder, clip_encoder_image, projection_layer=None, mg_encoder=None):
+def evaluate_transformer(
+        args=None,
+        encoder_feat=None,
+        decoder=None, 
+        clip_encoder_image=None, 
+
+        encoder_image = None,
+        layerNormalizeLayer = None,
+        adaptLayer = None,
+        adaptLayerClip = None,
+        ):
     # Load model
     encoder_feat = encoder_feat.to(device)
     encoder_feat.eval()
@@ -68,15 +78,6 @@ def evaluate_transformer(args,encoder_image,encoder_feat,decoder, clip_encoder_i
     if (clip_encoder_image != None):
         clip_encoder_image.to(device)
         clip_encoder_image.eval()
-
-    if (projection_layer != None):
-        projection_layer.to(device)
-        projection_layer.eval()
-
-    if (mg_encoder != None):
-        mg_encoder.to(device)
-        mg_encoder.eval()
-
 
     # Load word map (word2ix)
     word_map_file = os.path.join(args.data_folder, 'WORDMAP_' + args.data_name + '.json')
@@ -114,7 +115,7 @@ def evaluate_transformer(args,encoder_image,encoder_feat,decoder, clip_encoder_i
     nochange_acc=0
 
     with torch.no_grad():
-        for i, (image_pairs, caps, caplens, allcaps) in enumerate(
+        for i, (img_pairs, caps, caplens, allcaps) in enumerate(
                 tqdm(loader, desc=args.Split + " EVALUATING AT BEAM SIZE " + str(beam_size))):
             # 5 image is the same when "shuffle=False" of the dataloader
             if (i + 1) % 5 != 0:
@@ -124,51 +125,51 @@ def evaluate_transformer(args,encoder_image,encoder_feat,decoder, clip_encoder_i
             k = beam_size
 
             # Move to GPU device, if available
-            image_pairs = image_pairs.to(device)  # [1, 2, 3, 256, 256]
-
-            """
-            OLD
-            # Encode
-            imgs_A = image_pairs[:, 0, :, :, :]
-            imgs_B = image_pairs[:, 1, :, :, :]
-            imgs_A = clip_encoder_image(imgs_A) # encoder_image dan buna çevrildi
-            imgs_B = clip_encoder_image(imgs_B)  # encoder_image :[1, 1024,14,14]
-            encoder_out = encoder_feat(imgs_A, imgs_B) # encoder_out: (S, batch, feature_dim)"""
-
+            img_pairs = img_pairs.to(device)  # [1, 2, 3, 256, 256]
             # Forward prop.
-            imgs_A = image_pairs[:, 0, :, :, :]
-            imgs_B = image_pairs[:, 1, :, :, :]
-
-            clip_imgs_A = clip_encoder_image(imgs_A)
-            clip_imgs_B = clip_encoder_image(imgs_B)
+            imgs_A = img_pairs[:, 0, :, :, :]
+            imgs_B = img_pairs[:, 1, :, :, :]
 
             if(args.dual_branch == True ):
-                res_imgs_A = encoder_image(imgs_A)
-                res_imgs_B = encoder_image(imgs_B)
+                b, t, c, h, w = img_pairs.shape
+                imgs_full = img_pairs.view(-1, c, h, w) 
 
-            final_imgs_A = clip_encoder_image(imgs_A)
-            final_imgs_B = clip_encoder_image(imgs_B)
+                # 2. Pass the flattened pairs and set frames to 2
+                # Note: Remove parentheses from .shape (it is a property, not a function)
+                clip_out = clip_encoder_image(imgs_full, 2)
+                clip_out_A = clip_out[:,0,:] # 768 100 b
+                clip_out_B = clip_out[:,50,:]
+                resnet_A = encoder_image(imgs_A)
+                resnet_B = encoder_image(imgs_B)
 
-            if(args.dual_branch == True and args.feature_fusion == "addition"):
-                final_imgs_A = (clip_imgs_A + res_imgs_A) / 2
-                final_imgs_B = (clip_imgs_B + res_imgs_B) / 2
-            
-            elif(args.dual_branch == True and args.feature_fusion == "concat"):
-                final_imgs_A = torch.cat([clip_imgs_A, res_imgs_B], dim=1)
-                final_imgs_B = torch.cat([clip_imgs_B, res_imgs_B], dim=1)
-                final_imgs_A = projection_layer(final_imgs_A)
-                final_imgs_B = projection_layer(final_imgs_B)
+                resnet_A_adapt, clip_A_adapt = adaptLayer(resnet_A, clip_out_A)
+                resnet_B_adapt, clip_B_adapt = adaptLayer(resnet_B, clip_out_B)
+                resnet_A_normed, clip_A_normed = layerNormalizeLayer(resnet_A_adapt, clip_A_adapt)
+                resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B_adapt, clip_B_adapt)
 
-            elif(args.dual_branch == True and args.feature_fusion == "mg"):
-                final_imgs_A = torch.cat([clip_imgs_A, res_imgs_B], dim=1)
-                final_imgs_B = torch.cat([clip_imgs_B, res_imgs_B], dim=1)
-                final_imgs_A, mask_enc = mg_encoder(res_imgs_A, clip_imgs_A, None, isencoder=True)
-                final_imgs_B, mask_enc = mg_encoder(res_imgs_B, clip_imgs_B, None, isencoder=True)
-                
-            encoder_out = encoder_feat(
-                final_imgs_A,
-                final_imgs_B,
-            ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
+                final_A = torch.cat([resnet_A_normed, clip_A_normed], dim=1)
+                final_B = torch.cat([resnet_B_normed, clip_B_normed], dim=1)
+
+                encoder_out = encoder_feat(
+                    final_A,
+                    final_B,
+                ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
+            else:
+                b, t, c, h, w = img_pairs.shape
+                imgs_full = img_pairs.view(-1, c, h, w) 
+
+                # 2. Pass the flattened pairs and set frames to 2
+                # Note: Remove parentheses from .shape (it is a property, not a function)
+                clip_out = clip_encoder_image(imgs_full, 2)
+                clip_out_A = clip_out[:,0,:] # 768 100 b
+                clip_out_B = clip_out[:,50,:]
+                clip_out_A = adaptLayerClip(clip_out_A)
+                clip_out_B = adaptLayerClip(clip_out_B)
+
+                encoder_out = encoder_feat(
+                    clip_out_A,
+                    clip_out_B,
+                ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
 
 
             tgt = torch.zeros(52, k).to(device).to(torch.int64)
