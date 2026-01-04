@@ -52,66 +52,6 @@ class CLIPVisualEncoder(nn.Module):
         # 4. CLIP encoder (freeze) 
         for param in self.visual_encoder.parameters():
             param.requires_grad = False # veya True
-    
-    def forward(self, x):
-        # x shape: [Batch, 3, 224, 224]
-        
-        # --- CLIP'in içindeki forward akışını MANUEL yapıyoruz ---
-        with torch.no_grad():
-            # 1. Conv1 (Patch Embedding)
-            # Çıktı: [Batch, 768, 7, 7] (ViT-B/32 için)
-            x = self.visual_encoder.conv1(x) 
-            
-            # 2. Flatten ve Transpose
-            # Çıktı: [Batch, 49, 768]
-            x = x.reshape(x.shape[0], x.shape[1], -1) 
-            x = x.permute(0, 2, 1) 
-            
-            # 3. Class Embedding ve Positional Embedding Ekleme
-            # class_embedding shape: [768] -> [1, 1, 768] -> [Batch, 1, 768]
-            class_embedding = self.visual_encoder.class_embedding.to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device)
-            
-            # x shape: [Batch, 50, 768] (49 patch + 1 class)
-            x = torch.cat([class_embedding, x], dim=1) 
-            x = x + self.visual_encoder.positional_embedding.to(x.dtype)
-            
-            # 4. Layer Norm (Pre-Transformer)
-            x = self.visual_encoder.ln_pre(x)
-            
-            # 5. Transformer Katmanları
-            x = x.permute(1, 0, 2)  # [50, Batch, 768] 
-            x = self.visual_encoder.transformer(x)
-            x = x.permute(1, 0, 2)  # [Batch, 50, 768] (Geri çevir)
-            
-            # 6. Layer Norm (Post-Transformer)
-            x = self.visual_encoder.ln_post(x)
-
-        # --- RSICCformer İçin Şekillendirme ---
-        
-        # 7. CLS Tokeni at (İlk tokeni çıkar)
-        # Geriye [Batch, 49, 768] kalır
-        features = x[:, 1:, :] 
-        
-        # 8. Kare formata geri döndür
-        # Shape: [Batch, 768, 7, 7]
-        batch_size = features.shape[0]
-        side = int(features.shape[1] ** 0.5) # 7
-        features = features.permute(0, 2, 1).view(batch_size, -1, side, side)
-        
-        # 9. Interpolasyon (14x14'e büyüt)
-        if features.shape[2] != 14: #(eğer ViT 16 kullanılıyorsa hiç yapma)
-            features = torch.nn.functional.interpolate(features, size=(14, 14), mode='bilinear', align_corners=False)
-        # Shape: [Batch, 768, 14, 14]
-
-        # 10. Projection (Boyut Eşitleme)
-        # Linear katman son boyutta çalışır, bu yüzden kanalları sona al: [Batch, 14, 14, 768]
-        features = features.permute(0, 2, 3, 1)
-        out = self.projection(features)
-        
-        # 11. Son Çıktı Formatı: [Batch, 1024, 14, 14]
-        out = out.permute(0, 3, 1, 2)
-        
-        return out
 
 def train(
     args,
@@ -123,6 +63,9 @@ def train(
     criterion,
     encoder_image_optimizer,
     clip_encoder_optimizer,
+    layerNormalizeLayer,
+    adaptLayer,
+    adaptLayerClip,
     encoder_image_lr_scheduler,
     #clip_encoder_scheduler,
     encoder_feat_optimizer,
@@ -149,7 +92,7 @@ def train(
     if(args.dual_branch ==True):
         encoder_image.train()
     #encoder_image2.train()
-    clip_encoder_image.train()
+    clip_encoder_image.eval()
     encoder_feat.train()
     decoder.train()  # train mode (dropout and batchnorm is used)
     projection_layer.train()
@@ -170,7 +113,7 @@ def train(
         # Back prop.
         decoder_optimizer.zero_grad()
         encoder_feat_optimizer.zero_grad()
-        clip_encoder_optimizer.zero_grad()
+        #clip_encoder_optimizer.zero_grad()
         if(args.dual_branch == True):
             encoder_image_optimizer.zero_grad()
             projection_optimizer.zero_grad()
@@ -184,17 +127,51 @@ def train(
         imgs_A = img_pairs[:, 0, :, :, :]
         imgs_B = img_pairs[:, 1, :, :, :]
 
-        clip_imgs_A = clip_encoder_image(imgs_A)
-        clip_imgs_B = clip_encoder_image(imgs_B)
-
+        
         if(args.dual_branch == True ):
-            res_imgs_A = encoder_image(imgs_A)
-            res_imgs_B = encoder_image(imgs_B)
+            b, t, c, h, w = img_pairs.shape
+            imgs_full = img_pairs.view(-1, c, h, w) 
 
-        final_imgs_A = clip_encoder_image(imgs_A)
-        final_imgs_B = clip_encoder_image(imgs_B)
+            # 2. Pass the flattened pairs and set frames to 2
+            # Note: Remove parentheses from .shape (it is a property, not a function)
+            clip_out = clip_encoder_image(imgs_full, 2)
+            clip_out_A = clip_out[:,0,:] # 768 100 b
+            clip_out_B = clip_out[:,50,:]
+            resnet_A = encoder_image(imgs_A)
+            resnet_B = encoder_image(imgs_B)
 
-        if(args.dual_branch == True and args.feature_fusion == "addition"):
+            resnet_A_adapt, clip_A_adapt = adaptLayer(resnet_A, clip_out_A)
+            resnet_B_adapt, clip_B_adapt = adaptLayer(resnet_B, clip_out_B)
+            resnet_A_normed, clip_A_normed = layerNormalizeLayer(resnet_A_adapt, clip_A_adapt)
+            resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B_adapt, clip_B_adapt)
+
+            final_A = torch.cat([resnet_A_normed, clip_A_normed], dim=1)
+            final_B = torch.cat([resnet_B_normed, clip_B_normed], dim=1)
+
+            fused_feat = encoder_feat(
+                final_A,
+                final_B,
+            ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
+
+        else:
+            b, t, c, h, w = img_pairs.shape
+            imgs_full = img_pairs.view(-1, c, h, w) 
+
+            # 2. Pass the flattened pairs and set frames to 2
+            # Note: Remove parentheses from .shape (it is a property, not a function)
+            clip_out = clip_encoder_image(imgs_full, 2)
+            clip_out_A = clip_out[:,0,:] # 768 100 b
+            clip_out_B = clip_out[:,50,:]
+            clip_out_A = adaptLayerClip(clip_out_A)
+            clip_out_B = adaptLayerClip(clip_out_B)
+
+            fused_feat = encoder_feat(
+                clip_out_A,
+                clip_out_B,
+            ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
+
+
+        """if(args.dual_branch == True and args.feature_fusion == "addition"):
             final_imgs_A = (clip_imgs_A + res_imgs_A) / 2
             final_imgs_B = (clip_imgs_B + res_imgs_B) / 2
         
@@ -209,12 +186,7 @@ def train(
             final_imgs_B = torch.cat([clip_imgs_B, res_imgs_B], dim=1)
             final_imgs_A, mask_enc = mg_encoder(res_imgs_A, clip_imgs_A, None, isencoder=True)
             final_imgs_B, mask_enc = mg_encoder(res_imgs_B, clip_imgs_B, None, isencoder=True)
-            
-
-        fused_feat = encoder_feat(
-            final_imgs_A,
-            final_imgs_B,
-        ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
+            """
 
         scores, caps_sorted, decode_lengths, sort_ind = decoder(fused_feat, caps, caplens)
 
@@ -238,7 +210,7 @@ def train(
         encoder_feat_optimizer.step()
         encoder_feat_lr_scheduler.step()
 
-        clip_encoder_optimizer.step()
+        #clip_encoder_optimizer.step()
 
         projection_optimizer.step()
 
@@ -457,6 +429,119 @@ def validate_loss(val_loader, encoder_image, clip_encoder_image, encoder_feat, d
             
     return losses.avg
 
+
+class CustomLayerNorm(nn.Module):
+    def __init__(self, common_dim=512):
+        super().__init__()
+        
+        # --- ADIM 4 (Önceki adımın hazırlığı) ---
+        # (Burada Conv2d + GELU tanımları var varsayıyoruz)
+        
+        # --- ADIM 5: Layer Norm Tanımları ---
+        # LayerNorm'a sadece kanal sayısını veriyoruz (örneğin 512).
+        # Bu, her pikseldeki (14x14) 512'lik vektörü kendi içinde normalize eder.
+        self.ln_resnet = nn.LayerNorm(common_dim)
+        self.ln_clip = nn.LayerNorm(common_dim)
+
+    def forward(self, g_feat, c_feat):
+        # Girdi Boyutları (4. Adımdan gelen): 
+        # g_feat -> [Batch, 512, 14, 14]
+        # c_feat -> [Batch, 512, 14, 14]
+
+        # --- ADIM 5 UYGULAMA ---
+
+        # 1. ResNet Özellikleri için LayerNorm
+        # [B, C, H, W] -> [B, H, W, C] (Kanalı en sona atıyoruz)
+        g_feat = g_feat.permute(0, 2, 3, 1) 
+        g_feat = self.ln_resnet(g_feat)      # Normalizasyon
+        g_feat = g_feat.permute(0, 3, 1, 2)  # Tekrar [B, C, H, W] yapıyoruz
+
+        # 2. CLIP Özellikleri için LayerNorm
+        # Aynı işlem CLIP kolu için
+        c_feat = c_feat.permute(0, 2, 3, 1)
+        c_feat = self.ln_clip(c_feat)
+        c_feat = c_feat.permute(0, 3, 1, 2)
+
+        # Çıktılar şu an 6. Adım (Concat) için hazır.
+        return g_feat, c_feat
+
+class AdaptLayer(nn.Module):
+    def __init__(self, target_dim=512):
+        super().__init__()
+        
+        # --- Sizin Tanımladığınız Kısım (__init__) ---
+        
+        # 1. ResNet için Dönüşüm (1024 -> 512)
+        self.resnet_adapt = nn.Sequential(
+            nn.Conv2d(1024, target_dim, kernel_size=1),
+            nn.GELU()
+        )
+        
+        # 2. CLIP için Dönüşüm (768 -> 512)
+        self.clip_adapt = nn.Sequential(
+            nn.Conv2d(768, target_dim, kernel_size=1),
+            nn.GELU()
+        )
+
+    def forward(self, resnet_feat, clip_vec):
+        """
+        resnet_feat: [Batch, 2048, 14, 14]
+        clip_vec:    [Batch, 768] (Henüz 1x1 veya 14x14 değil)
+        """
+        
+        # --- RESNET KOLU ---
+        # ResNet zaten [B, C, H, W] formatında olduğu için doğrudan sokuyoruz.
+        # Girdi: [B, 2048, 14, 14] -> Çıktı: [B, 512, 14, 14]
+        g_feat = self.resnet_adapt(resnet_feat) 
+        
+        
+        # --- CLIP KOLU (DİKKAT) ---
+        # CLIP vektörü düz ([B, 768]) olduğu için Conv2d'ye girmeden önce
+        # onu 4 boyutlu hale getirip genişletmeliyiz (3. Madde burada uygulanır).
+        
+        # 1. Boyut ekle: [Batch, 768, 1, 1]
+        clip_grid = clip_vec.view(clip_vec.size(0), clip_vec.size(1), 1, 1)
+        
+        # 2. Kopyala (Broadcasting): [Batch, 768, 14, 14]
+        clip_grid = clip_grid.expand(-1, -1, 14, 14)
+        
+        # 3. Adaptasyon katmanına sok
+        # Girdi: [B, 768, 14, 14] -> Çıktı: [B, 512, 14, 14]
+        c_feat = self.clip_adapt(clip_grid)
+        
+        return g_feat, c_feat
+
+class AdaptLayerClip(nn.Module):
+    def __init__(self, target_dim=1024):
+        super().__init__()
+        
+        # 2. CLIP için Dönüşüm (768 -> 512)
+        self.clip_adapt = nn.Sequential(
+            nn.Conv2d(768, target_dim, kernel_size=1),
+            nn.GELU()
+        )
+
+    def forward(self, clip_vec):
+        """
+        resnet_feat: [Batch, 2048, 14, 14]
+        clip_vec:    [Batch, 768] (Henüz 1x1 veya 14x14 değil)
+        """
+        # --- CLIP KOLU (DİKKAT) ---
+        # CLIP vektörü düz ([B, 768]) olduğu için Conv2d'ye girmeden önce
+        # onu 4 boyutlu hale getirip genişletmeliyiz (3. Madde burada uygulanır).
+        
+        # 1. Boyut ekle: [Batch, 768, 1, 1]
+        clip_grid = clip_vec.view(clip_vec.size(0), clip_vec.size(1), 1, 1)
+        
+        # 2. Kopyala (Broadcasting): [Batch, 768, 14, 14]
+        clip_grid = clip_grid.expand(-1, -1, 14, 14)
+        
+        # 3. Adaptasyon katmanına sok
+        # Girdi: [B, 768, 14, 14] -> Çıktı: [B, 512, 14, 14]
+        c_feat = self.clip_adapt(clip_grid)
+        
+        return c_feat
+
 def main(args, meteor_output=None):
     print(args)
     global metrics_list
@@ -572,16 +657,20 @@ def main(args, meteor_output=None):
     )
 
     # ------------------------------ CLIP ENTEGRASYONU ------------------------------
-    Clip_visual_encoder_module = CLIPVisualEncoder(args.clip_path,1024)
+    clip = CLIPVisualEncoder(args.clip_path,1024)
 
-    clip_encoder_image = Clip_visual_encoder_module
-
-    clip_encoder_image_optimizer = torch.optim.Adam([
-        {'params': clip_encoder_image.visual_encoder.parameters(), 'lr': 1e-6},
-        {'params': clip_encoder_image.projection.parameters(), 'lr': 1e-4},])
+    clip_encoder_image = clip.visual_encoder.float()
     clip_encoder_image = clip_encoder_image.cuda()
 
-    clip_encoder_image.train()
+    clip_encoder_image.eval()
+
+
+    adaptLayer = AdaptLayer()
+    adaptLayer = adaptLayer.cuda()
+    adaptLayerClip = AdaptLayerClip() 
+    adaptLayerClip = adaptLayerClip.cuda()
+    layerNormalizeLayer = CustomLayerNorm()
+    layerNormalizeLayer = layerNormalizeLayer.cuda()
     # ------------------------------ CLIP ENTEGRASYONU ------------------------------
     
     #------------------------ TEXT ENCODER ENTEGRASYONU ----------------
@@ -589,7 +678,7 @@ def main(args, meteor_output=None):
         from CLIP_modules.tokenization_clip import SimpleTokenizer
 
         clip_tokenizer = SimpleTokenizer()
-        clip_model_ref = clip_encoder_image.clip_model.clip
+        clip_model_ref = clip.clip_model.clip
         
         # Köprü fonksiyonunu çalıştır
         bridge_embeddings_and_transfer(
@@ -632,7 +721,7 @@ def main(args, meteor_output=None):
                 decoder=decoder,
                 criterion=criterion,
                 encoder_image_optimizer=encoder_image_optimizer,
-                clip_encoder_optimizer=clip_encoder_image_optimizer,
+                clip_encoder_optimizer=None,
                 encoder_image_lr_scheduler=encoder_image_lr_scheduler,
                 #clip_encoder_scheduler=clip_encoder_scheduler,
                 encoder_feat_optimizer=encoder_feat_optimizer,
@@ -643,6 +732,9 @@ def main(args, meteor_output=None):
                 projection_optimizer = projection_optimizer,
                 projection_layer = projection_layer,
                 mg_encoder = mg_encoder,
+                adaptLayer= adaptLayer,
+                adaptLayerClip=adaptLayerClip,
+                layerNormalizeLayer=layerNormalizeLayer
             )
 
             metrics = evaluate_transformer(
@@ -669,7 +761,7 @@ def main(args, meteor_output=None):
                 save_checkpoint(args, "SecondCC", epoch, epochs_since_improvement, 
                                 encoder_image, encoder_feat, decoder, 
                                 encoder_image_optimizer, encoder_feat_optimizer, decoder_optimizer, mg_encoder,
-                                clip_encoder_image, clip_encoder_image_optimizer)
+                                clip_encoder_image)
                 
             # Early Stopping
             if epochs_since_improvement == args.stop_criteria:
