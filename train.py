@@ -260,7 +260,7 @@ def train(
     adaptLayer = None,
     adaptLayerClip = None,
     encoder_image_lr_scheduler = None,
-    gateSelf = None,
+    #gateSelf = None,
 
 ):
     """
@@ -345,8 +345,8 @@ def train(
           resnet_A_normed, clip_A_normed = layerNormalizeLayer(resnet_A_adapt, clip_A_adapt)
           resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B_adapt, clip_B_adapt)
 
-          resnet_A_normed = gateSelf(resnet_A_normed)
-          resnet_B_normed = gateSelf(resnet_B_normed)
+          #resnet_A_normed = gateSelf(resnet_A_normed)
+          #resnet_B_normed = gateSelf(resnet_B_normed)
 
           final_A = torch.cat([resnet_A_normed, clip_A_normed], dim=1)
           final_B = torch.cat([resnet_B_normed, clip_B_normed], dim=1)
@@ -526,7 +526,7 @@ def save_checkpoint(args= None,
                     adaptLayer = None,
                     adaptLayerClip = None,
                     encoder_image_lr_scheduler = None,
-                    gateSelf= None,
+                    #gateSelf= None,
                     ):
     import torch
     
@@ -569,8 +569,8 @@ def save_checkpoint(args= None,
         state['clip_encoder_optimizer'] = clip_encoder_optimizer.state_dict()
     if encoder_image_lr_scheduler is not None:
         state['encoder_image_lr_scheduler'] = encoder_image_lr_scheduler.state_dict()
-    if gateSelf is not None:
-        state['gateSelf'] = gateSelf.state_dict()
+    #if gateSelf is not None:
+    #    state['gateSelf'] = gateSelf.state_dict()
 
     # Kayıt Dizini Kontrolü
     directory = args.save_model_path
@@ -648,6 +648,45 @@ def main(args):
     with open(word_map_file, "r") as j:
         word_map = json.load(j)
 
+    
+    # ------------------------------ CLIP ENTEGRASYONU ------------------------------
+    clip = CLIPVisualEncoder(args.clip_path)
+
+    clip_encoder_image = clip.visual_encoder.float()
+    clip_encoder_image = clip_encoder_image.cuda()
+
+    clip_encoder_image.eval()
+
+    if(args.dual_branch == True):
+        adaptLayer = AdaptLayer()
+        adaptLayer = adaptLayer.cuda()
+        layerNormalizeLayer = CustomLayerNorm()
+        layerNormalizeLayer = layerNormalizeLayer.cuda()
+        #gateSelf = GatedSelfAttention(512)
+        #gateSelf = gateSelf.cuda()
+    else:
+        adaptLayerClip = AdaptLayerClip() 
+        adaptLayerClip = adaptLayerClip.cuda()
+        
+    
+    # ------------------------------ CLIP ENTEGRASYONU ------------------------------
+    
+    #------------------------ TEXT ENCODER ENTEGRASYONU ----------------
+    if(args.clip_text_encoder):
+        from CLIP_modules.tokenization_clip import SimpleTokenizer
+
+        clip_tokenizer = SimpleTokenizer()
+        clip_model_ref = clip.clip_model.clip
+        
+        # Köprü fonksiyonunu çalıştır
+        bridge_embeddings_and_transfer(
+            rsicc_decoder=decoder, 
+            clip_model=clip_model_ref, 
+            clip_tokenizer=clip_tokenizer, 
+            rsicc_word_map=word_map
+        )
+    #------------------------ TEXT ENCODER ENTEGRASYONU ----------------
+
     # Initialize
     # Encoder
     if(args.dual_branch == True):
@@ -695,10 +734,24 @@ def main(args):
         encoder_image_lr_scheduler = (
             StepLR(encoder_image_optimizer, step_size=900, gamma=1) if args.fine_tune_encoder else None
         )
+    
+    params_to_optimize = list(filter(lambda p: p.requires_grad, encoder_feat.parameters()))
 
+    if args.dual_branch:
+        # Dual branch ise bu katmanları ekle
+        params_to_optimize += list(adaptLayer.parameters())
+        params_to_optimize += list(layerNormalizeLayer.parameters())
+        #params_to_optimize += list(gateSelf.parameters())
+    else:
+        # Tek branch ise sadece bunu ekle
+        params_to_optimize += list(adaptLayerClip.parameters())
+
+    # Optimizer'ı bu birleşik liste ile oluşturun
     encoder_feat_optimizer = torch.optim.Adam(
-        params=filter(lambda p: p.requires_grad, encoder_feat.parameters()), lr=args.encoder_lr
+        params=params_to_optimize, 
+        lr=args.encoder_lr
     )
+
     encoder_feat_lr_scheduler = StepLR(encoder_feat_optimizer, step_size=900, gamma=1)
 
     decoder_optimizer = torch.optim.Adam(
@@ -744,43 +797,6 @@ def main(args):
         pin_memory=True,
     )
 
-    # ------------------------------ CLIP ENTEGRASYONU ------------------------------
-    clip = CLIPVisualEncoder(args.clip_path)
-
-    clip_encoder_image = clip.visual_encoder.float()
-    clip_encoder_image = clip_encoder_image.cuda()
-
-    clip_encoder_image.eval()
-
-    if(args.dual_branch == True):
-        adaptLayer = AdaptLayer()
-        adaptLayer = adaptLayer.cuda()
-        layerNormalizeLayer = CustomLayerNorm()
-        layerNormalizeLayer = layerNormalizeLayer.cuda()
-        gateSelf = GatedSelfAttention(512)
-        gateSelf = gateSelf.cuda()
-    else:
-        adaptLayerClip = AdaptLayerClip() 
-        adaptLayerClip = adaptLayerClip.cuda()
-        
-    
-    # ------------------------------ CLIP ENTEGRASYONU ------------------------------
-    
-    #------------------------ TEXT ENCODER ENTEGRASYONU ----------------
-    if(args.clip_text_encoder):
-        from CLIP_modules.tokenization_clip import SimpleTokenizer
-
-        clip_tokenizer = SimpleTokenizer()
-        clip_model_ref = clip.clip_model.clip
-        
-        # Köprü fonksiyonunu çalıştır
-        bridge_embeddings_and_transfer(
-            rsicc_decoder=decoder, 
-            clip_model=clip_model_ref, 
-            clip_tokenizer=clip_tokenizer, 
-            rsicc_word_map=word_map
-        )
-    #------------------------ TEXT ENCODER ENTEGRASYONU ----------------
 
     if(args.eval_mode == False):
         # Epochs
@@ -806,7 +822,7 @@ def main(args):
                     epoch=epoch,
                     adaptLayer= adaptLayer,
                     layerNormalizeLayer=layerNormalizeLayer,
-                    gateSelf=gateSelf,
+                    #gateSelf=gateSelf,
                 )
             else:
                 train(
@@ -832,7 +848,7 @@ def main(args):
                     decoder=decoder,
                     layerNormalizeLayer=layerNormalizeLayer,
                     adaptLayer=adaptLayer,
-                    gateSelf=gateSelf,
+                    #gateSelf=gateSelf,
                     )
             else:
               metrics = evaluate_transformer(
@@ -873,7 +889,7 @@ def main(args):
                                     clip_encoder_image=clip_encoder_image,
                                     adaptLayer=adaptLayer,
                                     layerNormalizeLayer=layerNormalizeLayer,
-                                    gateSelf=gateSelf,
+                                    #gateSelf=gateSelf,
                                     )
                 else:
                     save_checkpoint(args,
