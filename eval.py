@@ -112,7 +112,7 @@ def evaluate_transformer(
     loader = torch.utils.data.DataLoader(
         CaptionDataset(args.data_folder, args.data_name, args.Split, 
                     transform=transform),
-        batch_size=args.batch_size,
+        batch_size=64,
         shuffle=True,
         num_workers=args.workers,
         pin_memory=True,
