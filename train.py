@@ -830,6 +830,15 @@ def main(args):
             
         if 'decoder' in checkpoint:
             decoder.load_state_dict(checkpoint['decoder'])
+        
+        if 'layerNormalizeLayer' in checkpoint:
+            layerNormalizeLayer.load_state_dict(checkpoint['layerNormalizeLayer'])
+
+        if 'adaptLayer' in checkpoint:
+            adaptLayer.load_state_dict(checkpoint['adaptLayer'])
+        
+        if 'adaptLayerClip' in checkpoint:
+            adaptLayerClip.load_state_dict(checkpoint['adaptLayerClip'])
 
         # Check for CLIP specifically
         if 'clip_encoder_image' in checkpoint:
@@ -853,14 +862,23 @@ def main(args):
             )
         #------------------------ TEXT ENCODER ENTEGRASYONU ----------------
 
-        # Now run evaluation
-        metrics = evaluate_transformer(
-            args, 
-            encoder_image=encoder_image,
-            clip_encoder_image=clip_encoder_image, 
-            encoder_feat=encoder_feat, 
-            decoder=decoder,
-        )
+        if(args.dual_branch == True):
+              metrics = evaluate_transformer(
+                    args, 
+                    encoder_image=encoder_image, 
+                    clip_encoder_image=clip_encoder_image, 
+                    encoder_feat=encoder_feat,
+                    decoder=decoder,
+                    layerNormalizeLayer=layerNormalizeLayer,
+                    adaptLayer=adaptLayer,
+                    )
+        else:
+              metrics = evaluate_transformer(
+                    args, 
+                    clip_encoder_image=clip_encoder_image, 
+                    encoder_feat=encoder_feat,
+                    decoder=decoder,
+                    adaptLayerClip=adaptLayerClip)
 
 if __name__ == "__main__":
     folder_path = ""
