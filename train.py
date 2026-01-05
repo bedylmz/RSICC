@@ -952,7 +952,7 @@ def main(args):
                     decoder=decoder,
                     layerNormalizeLayer=layerNormalizeLayer,
                     adaptLayer=adaptLayer,
-                    gateSelf= gateSelf,
+                    #gateSelf= gateSelf,
                     )
         else:
               metrics = evaluate_transformer(
