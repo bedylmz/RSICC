@@ -8,6 +8,7 @@ from tqdm import tqdm
 import argparse
 import time
 from torch import nn
+from typing import Optional
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -65,15 +66,14 @@ def get_key(dict_, value):
   return [k for k, v in dict_.items() if v == value]
 
 def evaluate_transformer(
-        args=None,
-        encoder_feat=None,
-        decoder=None, 
-        clip_encoder_image=None, 
-
-        encoder_image = None,
-        layerNormalizeLayer = None,
-        adaptLayer = None,
-        adaptLayerClip = None,
+        args: argparse.Namespace = None,
+        encoder_feat: Optional[nn.Module] = None,
+        decoder: Optional[nn.Module] = None,
+        clip_encoder_image: Optional[nn.Module] = None,
+        encoder_image: Optional[nn.Module] = None,
+        layerNormalizeLayer: Optional[nn.Module] = None,
+        adaptLayer: Optional[nn.Module] = None,        # Burası
+        adaptLayerClip: Optional[nn.Module] = None,
         ):
     # Load model
     encoder_feat = encoder_feat.to(device)
