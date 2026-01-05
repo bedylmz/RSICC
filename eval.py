@@ -91,6 +91,22 @@ def evaluate_transformer(
         clip_encoder_image.to(device)
         clip_encoder_image.eval()
 
+    if (layerNormalizeLayer != None):
+        layerNormalizeLayer.to(device)
+        layerNormalizeLayer.eval()
+
+    if (adaptLayer != None):
+        adaptLayer.to(device)
+        adaptLayer.eval()
+
+    if (adaptLayerClip != None):
+        adaptLayerClip.to(device)
+        adaptLayerClip.eval()
+
+    if (gateSelf != None):
+        gateSelf.to(device)
+        gateSelf.eval()
+
     # Load word map (word2ix)
     word_map_file = os.path.join(args.data_folder, 'WORDMAP_' + args.data_name + '.json')
     with open(word_map_file, 'r') as f:
@@ -183,23 +199,25 @@ def evaluate_transformer(
                 resnet_A_normed, clip_A_normed = layerNormalizeLayer(resnet_A_adapt, clip_A_adapt)
                 resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B_adapt, clip_B_adapt)
 
-                b, c, h, w = resnet_A_normed.shape
-                resnet_A_flat = resnet_A_normed.permute(0, 2, 3, 1).view(b, h*w, c) 
+                if(args.gate ==True):
 
-                    # 2. Attention uygulayın (Çıktı yine [Batch, 196, 512] olacak)
-                resnet_A_att, _ = gateSelf(resnet_A_flat)
+                    b, c, h, w = resnet_A_normed.shape
+                    resnet_A_flat = resnet_A_normed.permute(0, 2, 3, 1).view(b, h*w, c) 
 
-                    # 3. Tekrar [Batch, 512, 14, 14] formatına dönün (Concat için gerekli)
-                resnet_A_normed = resnet_A_att.view(b, h, w, c).permute(0, 3, 1, 2)
+                        # 2. Attention uygulayın (Çıktı yine [Batch, 196, 512] olacak)
+                    resnet_A_att, _ = gateSelf(resnet_A_flat)
 
-                b, c, h, w = resnet_B_normed.shape
-                resnet_A_flat = resnet_B_normed.permute(0, 2, 3, 1).view(b, h*w, c) 
+                        # 3. Tekrar [Batch, 512, 14, 14] formatına dönün (Concat için gerekli)
+                    resnet_A_normed = resnet_A_att.view(b, h, w, c).permute(0, 3, 1, 2)
 
-                    # 2. Attention uygulayın (Çıktı yine [Batch, 196, 512] olacak)
-                resnet_A_att, _ = gateSelf(resnet_A_flat)
+                    b, c, h, w = resnet_B_normed.shape
+                    resnet_A_flat = resnet_B_normed.permute(0, 2, 3, 1).view(b, h*w, c) 
 
-                    # 3. Tekrar [Batch, 512, 14, 14] formatına dönün (Concat için gerekli)
-                resnet_B_normed = resnet_A_att.view(b, h, w, c).permute(0, 3, 1, 2)
+                        # 2. Attention uygulayın (Çıktı yine [Batch, 196, 512] olacak)
+                    resnet_A_att, _ = gateSelf(resnet_A_flat)
+
+                        # 3. Tekrar [Batch, 512, 14, 14] formatına dönün (Concat için gerekli)
+                    resnet_B_normed = resnet_A_att.view(b, h, w, c).permute(0, 3, 1, 2)
 
                 final_A = torch.cat([resnet_A_normed, clip_A_normed], dim=1)
                 final_B = torch.cat([resnet_B_normed, clip_B_normed], dim=1)

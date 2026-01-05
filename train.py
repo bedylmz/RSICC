@@ -277,6 +277,13 @@ def train(
 
     if(args.dual_branch ==True):
         encoder_image.train()
+        adaptLayer.train()
+        layerNormalizeLayer.train()
+        if(args.gate ==True):
+            gateSelf.train()
+    else:
+        adaptLayerClip.train()
+
 
     clip_encoder_image.eval()
     encoder_feat.train()
@@ -324,74 +331,74 @@ def train(
 
         
         if(args.dual_branch == True ):
-          b, t, c, h, w = img_pairs.shape
-          imgs_full = img_pairs.view(-1, c, h, w) 
-          imgs_full_clip = norm_clip(imgs_full) # CLIP için normalize et
+            b, t, c, h, w = img_pairs.shape
+            imgs_full = img_pairs.view(-1, c, h, w) 
+            imgs_full_clip = norm_clip(imgs_full) # CLIP için normalize et
 
-          # 2. Pass the flattened pairs and set frames to 2
-          # Note: Remove parentheses from .shape (it is a property, not a function)
-          clip_out = clip_encoder_image(imgs_full_clip, 2)
-          clip_out_A = clip_out[:,0,:] # 768 100 b
-          clip_out_B = clip_out[:,50,:]
+            # 2. Pass the flattened pairs and set frames to 2
+            # Note: Remove parentheses from .shape (it is a property, not a function)
+            clip_out = clip_encoder_image(imgs_full_clip, 2)
+            clip_out_A = clip_out[:,0,:] # 768 100 b
+            clip_out_B = clip_out[:,50,:]
 
-          imgs_A_resnet = norm_resnet(imgs_A) # ResNet için normalize et
-          imgs_B_resnet = norm_resnet(imgs_B)
-          
-          resnet_A = encoder_image(imgs_A_resnet)
-          resnet_B = encoder_image(imgs_B_resnet)
-          
+            imgs_A_resnet = norm_resnet(imgs_A) # ResNet için normalize et
+            imgs_B_resnet = norm_resnet(imgs_B)
+            
+            resnet_A = encoder_image(imgs_A_resnet)
+            resnet_B = encoder_image(imgs_B_resnet)
+            
 
-          resnet_A_adapt, clip_A_adapt = adaptLayer(resnet_A, clip_out_A)
-          resnet_B_adapt, clip_B_adapt = adaptLayer(resnet_B, clip_out_B)
+            resnet_A_adapt, clip_A_adapt = adaptLayer(resnet_A, clip_out_A)
+            resnet_B_adapt, clip_B_adapt = adaptLayer(resnet_B, clip_out_B)
 
 
-          resnet_A_normed, clip_A_normed = layerNormalizeLayer(resnet_A_adapt, clip_A_adapt)
-          resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B_adapt, clip_B_adapt)
+            resnet_A_normed, clip_A_normed = layerNormalizeLayer(resnet_A_adapt, clip_A_adapt)
+            resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B_adapt, clip_B_adapt)
 
             # train fonksiyonu içinde (satır 194 civarı)
             # Girdi: [Batch, 512, 14, 14]
+            if(args.gate ==True):
+                # 1. Kanalı sona alıp düzleştirin: [Batch, 196, 512]
+                b, c, h, w = resnet_A_normed.shape
+                resnet_A_flat = resnet_A_normed.permute(0, 2, 3, 1).view(b, h*w, c) 
 
-            # 1. Kanalı sona alıp düzleştirin: [Batch, 196, 512]
-          b, c, h, w = resnet_A_normed.shape
-          resnet_A_flat = resnet_A_normed.permute(0, 2, 3, 1).view(b, h*w, c) 
+                # 2. Attention uygulayın (Çıktı yine [Batch, 196, 512] olacak)
+                resnet_A_att, _ = gateSelf(resnet_A_flat)
 
-            # 2. Attention uygulayın (Çıktı yine [Batch, 196, 512] olacak)
-          resnet_A_att, _ = gateSelf(resnet_A_flat)
+                # 3. Tekrar [Batch, 512, 14, 14] formatına dönün (Concat için gerekli)
+                resnet_A_normed = resnet_A_att.view(b, h, w, c).permute(0, 3, 1, 2)
 
-            # 3. Tekrar [Batch, 512, 14, 14] formatına dönün (Concat için gerekli)
-          resnet_A_normed = resnet_A_att.view(b, h, w, c).permute(0, 3, 1, 2)
+                b, c, h, w = resnet_B_normed.shape
+                resnet_B_flat = resnet_B_normed.permute(0, 2, 3, 1).view(b, h*w, c) 
 
-          b, c, h, w = resnet_B_normed.shape
-          resnet_A_flat = resnet_B_normed.permute(0, 2, 3, 1).view(b, h*w, c) 
+                # 2. Attention uygulayın (Çıktı yine [Batch, 196, 512] olacak)
+                resnet_B_att, _ = gateSelf(resnet_B_flat)
 
-            # 2. Attention uygulayın (Çıktı yine [Batch, 196, 512] olacak)
-          resnet_A_att, _ = gateSelf(resnet_A_flat)
+                # 3. Tekrar [Batch, 512, 14, 14] formatına dönün (Concat için gerekli)
+                resnet_B_normed = resnet_B_att.view(b, h, w, c).permute(0, 3, 1, 2)
 
-            # 3. Tekrar [Batch, 512, 14, 14] formatına dönün (Concat için gerekli)
-          resnet_B_normed = resnet_A_att.view(b, h, w, c).permute(0, 3, 1, 2)
+            final_A = torch.cat([resnet_A_normed, clip_A_normed], dim=1)
+            final_B = torch.cat([resnet_B_normed, clip_B_normed], dim=1)
 
-          final_A = torch.cat([resnet_A_normed, clip_A_normed], dim=1)
-          final_B = torch.cat([resnet_B_normed, clip_B_normed], dim=1)
-
-          fused_feat = encoder_feat(
-              final_A,
-              final_B,
-          ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
+            fused_feat = encoder_feat(
+                final_A,
+                final_B,
+            ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
         else:
-          b, t, c, h, w = img_pairs.shape
-          imgs_full = img_pairs.view(-1, c, h, w) 
-          imgs_full_clip = norm_clip(imgs_full)
-          # 2. Pass the flattened pairs and set frames to 2
-          # Note: Remove parentheses from .shape (it is a property, not a function)
-          clip_out = clip_encoder_image(imgs_full_clip, 2)
-          clip_out_A = clip_out[:,0,:] # 768 100 b
-          clip_out_B = clip_out[:,50,:]
-          clip_out_A = adaptLayerClip(clip_out_A)
-          clip_out_B = adaptLayerClip(clip_out_B)
+            b, t, c, h, w = img_pairs.shape
+            imgs_full = img_pairs.view(-1, c, h, w) 
+            imgs_full_clip = norm_clip(imgs_full)
+            # 2. Pass the flattened pairs and set frames to 2
+            # Note: Remove parentheses from .shape (it is a property, not a function)
+            clip_out = clip_encoder_image(imgs_full_clip, 2)
+            clip_out_A = clip_out[:,0,:] # 768 100 b
+            clip_out_B = clip_out[:,50,:]
+            clip_out_A = adaptLayerClip(clip_out_A)
+            clip_out_B = adaptLayerClip(clip_out_B)
 
-          fused_feat = encoder_feat(
-              clip_out_A,
-              clip_out_B,
+            fused_feat = encoder_feat(
+                clip_out_A,
+                clip_out_B,
             ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
 
         scores, caps_sorted, decode_lengths, sort_ind = decoder(fused_feat, caps, caplens)
@@ -684,8 +691,9 @@ def main(args):
         adaptLayer = adaptLayer.cuda()
         layerNormalizeLayer = CustomLayerNorm()
         layerNormalizeLayer = layerNormalizeLayer.cuda()
-        gateSelf = GatedSelfAttention(512)
-        gateSelf = gateSelf.cuda()
+        if(args.gate ==True):
+            gateSelf = GatedSelfAttention(512)
+            gateSelf = gateSelf.cuda()
     else:
         adaptLayerClip = AdaptLayerClip() 
         adaptLayerClip = adaptLayerClip.cuda()
@@ -749,7 +757,8 @@ def main(args):
         # Dual branch ise bu katmanları ekle
         params_to_optimize += list(adaptLayer.parameters())
         params_to_optimize += list(layerNormalizeLayer.parameters())
-        #params_to_optimize += list(gateSelf.parameters())
+        if(args.gate ==True):
+            params_to_optimize += list(gateSelf.parameters())
     else:
         # Tek branch ise sadece bunu ekle
         params_to_optimize += list(adaptLayerClip.parameters())
@@ -829,25 +838,45 @@ def main(args):
             print(time.strftime("%m-%d  %H : %M : %S", time.localtime(time.time())))
             
             if (args.dual_branch == True):
-                train(
-                    args,
-                    train_loader=train_loader,
-                    encoder_image=encoder_image,
-                    clip_encoder_image=clip_encoder_image,
-                    encoder_feat=encoder_feat,
-                    decoder=decoder,
-                    criterion=criterion,
-                    encoder_image_optimizer=encoder_image_optimizer,
-                    encoder_image_lr_scheduler=encoder_image_lr_scheduler,
-                    encoder_feat_optimizer=encoder_feat_optimizer,
-                    encoder_feat_lr_scheduler=encoder_feat_lr_scheduler,
-                    decoder_optimizer=decoder_optimizer,
-                    decoder_lr_scheduler=decoder_lr_scheduler,
-                    epoch=epoch,
-                    adaptLayer= adaptLayer,
-                    layerNormalizeLayer=layerNormalizeLayer,
-                    gateSelf=gateSelf,
-                )
+                if(args.gate ==True):
+                    train(
+                        args,
+                        train_loader=train_loader,
+                        encoder_image=encoder_image,
+                        clip_encoder_image=clip_encoder_image,
+                        encoder_feat=encoder_feat,
+                        decoder=decoder,
+                        criterion=criterion,
+                        encoder_image_optimizer=encoder_image_optimizer,
+                        encoder_image_lr_scheduler=encoder_image_lr_scheduler,
+                        encoder_feat_optimizer=encoder_feat_optimizer,
+                        encoder_feat_lr_scheduler=encoder_feat_lr_scheduler,
+                        decoder_optimizer=decoder_optimizer,
+                        decoder_lr_scheduler=decoder_lr_scheduler,
+                        epoch=epoch,
+                        adaptLayer= adaptLayer,
+                        layerNormalizeLayer=layerNormalizeLayer,
+                        gateSelf=gateSelf,
+                    )
+                else:
+                    train(
+                        args,
+                        train_loader=train_loader,
+                        encoder_image=encoder_image,
+                        clip_encoder_image=clip_encoder_image,
+                        encoder_feat=encoder_feat,
+                        decoder=decoder,
+                        criterion=criterion,
+                        encoder_image_optimizer=encoder_image_optimizer,
+                        encoder_image_lr_scheduler=encoder_image_lr_scheduler,
+                        encoder_feat_optimizer=encoder_feat_optimizer,
+                        encoder_feat_lr_scheduler=encoder_feat_lr_scheduler,
+                        decoder_optimizer=decoder_optimizer,
+                        decoder_lr_scheduler=decoder_lr_scheduler,
+                        epoch=epoch,
+                        adaptLayer= adaptLayer,
+                        layerNormalizeLayer=layerNormalizeLayer,
+                    )
             else:
                 train(
                     args,
@@ -864,16 +893,27 @@ def main(args):
                     adaptLayerClip= adaptLayerClip,
                 )
             if(args.dual_branch == True):
-              metrics = evaluate_transformer(
-                    args, 
-                    encoder_image=encoder_image, 
-                    clip_encoder_image=clip_encoder_image, 
-                    encoder_feat=encoder_feat,
-                    decoder=decoder,
-                    layerNormalizeLayer=layerNormalizeLayer,
-                    adaptLayer=adaptLayer,
-                    gateSelf=gateSelf,
-                    )
+              if(args.gate == True):
+                metrics = evaluate_transformer(
+                        args, 
+                        encoder_image=encoder_image, 
+                        clip_encoder_image=clip_encoder_image, 
+                        encoder_feat=encoder_feat,
+                        decoder=decoder,
+                        layerNormalizeLayer=layerNormalizeLayer,
+                        adaptLayer=adaptLayer,
+                        gateSelf=gateSelf,
+                        )
+              else:
+                  metrics = evaluate_transformer(
+                        args, 
+                        encoder_image=encoder_image, 
+                        clip_encoder_image=clip_encoder_image, 
+                        encoder_feat=encoder_feat,
+                        decoder=decoder,
+                        layerNormalizeLayer=layerNormalizeLayer,
+                        adaptLayer=adaptLayer,
+                        )
             else:
               metrics = evaluate_transformer(
                     args, 
@@ -900,21 +940,37 @@ def main(args):
                 print("-------------------------checkpoint Saved-------------------------")
                 # Save checkpoint
                 if(args.dual_branch == True):
-                    save_checkpoint(args,
-                                    "SecondCC",
-                                    epoch = epoch,
-                                    epochs_since_improvement = epochs_since_improvement, 
-                                    encoder_image = encoder_image,
-                                    encoder_feat=encoder_feat,
-                                    decoder=decoder, 
-                                    encoder_image_optimizer=encoder_image_optimizer,
-                                    encoder_feat_optimizer=encoder_feat_optimizer,
-                                    decoder_optimizer=decoder_optimizer, 
-                                    clip_encoder_image=clip_encoder_image,
-                                    adaptLayer=adaptLayer,
-                                    layerNormalizeLayer=layerNormalizeLayer,
-                                    gateSelf=gateSelf,
-                                    )
+                    if(args.gate == True):
+                        save_checkpoint(args,
+                                        "SecondCC",
+                                        epoch = epoch,
+                                        epochs_since_improvement = epochs_since_improvement, 
+                                        encoder_image = encoder_image,
+                                        encoder_feat=encoder_feat,
+                                        decoder=decoder, 
+                                        encoder_image_optimizer=encoder_image_optimizer,
+                                        encoder_feat_optimizer=encoder_feat_optimizer,
+                                        decoder_optimizer=decoder_optimizer, 
+                                        clip_encoder_image=clip_encoder_image,
+                                        adaptLayer=adaptLayer,
+                                        layerNormalizeLayer=layerNormalizeLayer,
+                                        gateSelf=gateSelf,
+                                        )
+                    else:
+                        save_checkpoint(args,
+                                        "SecondCC",
+                                        epoch = epoch,
+                                        epochs_since_improvement = epochs_since_improvement, 
+                                        encoder_image = encoder_image,
+                                        encoder_feat=encoder_feat,
+                                        decoder=decoder, 
+                                        encoder_image_optimizer=encoder_image_optimizer,
+                                        encoder_feat_optimizer=encoder_feat_optimizer,
+                                        decoder_optimizer=decoder_optimizer, 
+                                        clip_encoder_image=clip_encoder_image,
+                                        adaptLayer=adaptLayer,
+                                        layerNormalizeLayer=layerNormalizeLayer,
+                                        )
                 else:
                     save_checkpoint(args,
                                     "SecondCC",
@@ -984,16 +1040,27 @@ def main(args):
         #------------------------ TEXT ENCODER ENTEGRASYONU ----------------
 
         if(args.dual_branch == True):
-              metrics = evaluate_transformer(
-                    args, 
-                    encoder_image=encoder_image, 
-                    clip_encoder_image=clip_encoder_image, 
-                    encoder_feat=encoder_feat,
-                    decoder=decoder,
-                    layerNormalizeLayer=layerNormalizeLayer,
-                    adaptLayer=adaptLayer,
-                    gateSelf= gateSelf,
-                    )
+              if(args.gate ==  True):
+                metrics = evaluate_transformer(
+                        args, 
+                        encoder_image=encoder_image, 
+                        clip_encoder_image=clip_encoder_image, 
+                        encoder_feat=encoder_feat,
+                        decoder=decoder,
+                        layerNormalizeLayer=layerNormalizeLayer,
+                        adaptLayer=adaptLayer,
+                        gateSelf= gateSelf,
+                        )
+              else:
+                   metrics = evaluate_transformer(
+                        args, 
+                        encoder_image=encoder_image, 
+                        clip_encoder_image=clip_encoder_image, 
+                        encoder_feat=encoder_feat,
+                        decoder=decoder,
+                        layerNormalizeLayer=layerNormalizeLayer,
+                        adaptLayer=adaptLayer,
+                        )
         else:
               metrics = evaluate_transformer(
                     args, 
@@ -1035,6 +1102,7 @@ if __name__ == "__main__":
     
     #params for dual branch
     parser.add_argument("--dual_branch", action='store_true', help="Enable dual branch")
+    parser.add_argument("--gate", action='store_true', help="Enable dual branch")
 
     #params for text encoder
     parser.add_argument("--clip_text_encoder", type=bool, default=False)
