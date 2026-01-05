@@ -183,8 +183,23 @@ def evaluate_transformer(
                 resnet_A_normed, clip_A_normed = layerNormalizeLayer(resnet_A_adapt, clip_A_adapt)
                 resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B_adapt, clip_B_adapt)
 
-                resnet_A_normed = gateSelf(resnet_A_normed)
-                resnet_B_normed = gateSelf(resnet_B_normed)
+                b, c, h, w = resnet_A_normed.shape
+                resnet_A_flat = resnet_A_normed.permute(0, 2, 3, 1).view(b, h*w, c) 
+
+                    # 2. Attention uygulayın (Çıktı yine [Batch, 196, 512] olacak)
+                resnet_A_att, _ = gateSelf(resnet_A_flat)
+
+                    # 3. Tekrar [Batch, 512, 14, 14] formatına dönün (Concat için gerekli)
+                resnet_A_normed = resnet_A_att.view(b, h, w, c).permute(0, 3, 1, 2)
+
+                b, c, h, w = resnet_B_normed.shape
+                resnet_A_flat = resnet_B_normed.permute(0, 2, 3, 1).view(b, h*w, c) 
+
+                    # 2. Attention uygulayın (Çıktı yine [Batch, 196, 512] olacak)
+                resnet_A_att, _ = gateSelf(resnet_A_flat)
+
+                    # 3. Tekrar [Batch, 512, 14, 14] formatına dönün (Concat için gerekli)
+                resnet_B_normed = resnet_A_att.view(b, h, w, c).permute(0, 3, 1, 2)
 
                 final_A = torch.cat([resnet_A_normed, clip_A_normed], dim=1)
                 final_B = torch.cat([resnet_B_normed, clip_B_normed], dim=1)
