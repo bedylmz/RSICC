@@ -183,8 +183,8 @@ def evaluate_transformer(
                 resnet_A_normed, clip_A_normed = layerNormalizeLayer(resnet_A_adapt, clip_A_adapt)
                 resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B_adapt, clip_B_adapt)
 
-                resnet_A_normed = gateSelf(resnet_A_normed)
-                resnet_B_normed = gateSelf(resnet_B_normed)
+                #resnet_A_normed = gateSelf(resnet_A_normed)
+                #resnet_B_normed = gateSelf(resnet_B_normed)
 
                 final_A = torch.cat([resnet_A_normed, clip_A_normed], dim=1)
                 final_B = torch.cat([resnet_B_normed, clip_B_normed], dim=1)
