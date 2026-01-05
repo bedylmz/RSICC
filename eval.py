@@ -112,7 +112,7 @@ def evaluate_transformer(
     loader = torch.utils.data.DataLoader(
         CaptionDataset(args.data_folder, args.data_name, args.Split, 
                     transform=transform),
-        batch_size=64,
+        batch_size=args.batch_size,
         shuffle=True,
         num_workers=args.workers,
         pin_memory=True,
@@ -207,6 +207,9 @@ def evaluate_transformer(
                     clip_out_B,
                 ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
 
+            if encoder_out.size(1) != b:
+                # Fazlalık batch boyutlarını kesip atıyoruz, sadece geçerli veriyi alıyoruz.
+                encoder_out = encoder_out[:, :b, :]
 
             tgt = torch.zeros(52, k).to(device).to(torch.int64)
             tgt_length = tgt.size(0)
