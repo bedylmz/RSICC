@@ -9,6 +9,7 @@ from torch import nn
 from torch.nn.utils.rnn import pack_padded_sequence
 import argparse
 from torch.optim.lr_scheduler import StepLR
+import torch.nn.functional as F
 
 from models import MCCFormers_diff_as_Q, DecoderTransformer, CNN_Encoder
 from datasets import CaptionDataset
@@ -174,6 +175,71 @@ class AdaptLayerClip(nn.Module):
         
         return c_feat
 
+class GatedSelfAttention(nn.Module):
+    def __init__(self, d_model, n_head=8, dropout=0.1):
+        super(GatedSelfAttention, self).__init__()
+        
+        self.d_model = d_model
+        self.n_head = n_head
+        self.head_dim = d_model // n_head
+        
+        # Standart Q, K, V projeksiyonları
+        self.w_q = nn.Linear(d_model, d_model)
+        self.w_k = nn.Linear(d_model, d_model)
+        self.w_v = nn.Linear(d_model, d_model)
+        
+        self.dropout = nn.Dropout(dropout)
+        self.scale = torch.sqrt(torch.FloatTensor([self.head_dim]))
+
+        # --- LINEAR + GLU KISMI ---
+        # GLU giriş boyutunu yarıya indirdiği için, önce boyutu 2 katına çıkarıyoruz.
+        # Bu kısım attention çıktısını "gate"lemek için kullanılır.
+        self.linear_glu = nn.Linear(d_model, d_model * 2) 
+        self.glu = nn.GLU(dim=-1) # Çıktı boyutu: d_model olur
+        # --------------------------
+
+        self.layer_norm = nn.LayerNorm(d_model)
+
+    def forward(self, x, mask=None):
+        batch_size, seq_len, _ = x.shape
+        
+        # 1. Self-Attention Hesaplamaları
+        Q = self.w_q(x)
+        K = self.w_k(x)
+        V = self.w_v(x)
+        
+        # Head'lere ayırma: (Batch, Seq, Head, Dim)
+        Q = Q.view(batch_size, seq_len, self.n_head, self.head_dim).permute(0, 2, 1, 3)
+        K = K.view(batch_size, seq_len, self.n_head, self.head_dim).permute(0, 2, 1, 3)
+        V = V.view(batch_size, seq_len, self.n_head, self.head_dim).permute(0, 2, 1, 3)
+        
+        # Attention Score
+        energy = torch.matmul(Q, K.permute(0, 1, 3, 2)) / self.scale.to(x.device)
+        
+        if mask is not None:
+            energy = energy.masked_fill(mask == 0, -1e10)
+        
+        attention = torch.softmax(energy, dim=-1)
+        attention = self.dropout(attention)
+        
+        # Weighted Sum
+        out = torch.matmul(attention, V)
+        
+        # Boyutları geri düzeltme
+        out = out.permute(0, 2, 1, 3).contiguous().view(batch_size, seq_len, self.d_model)
+        
+        # 2. LINEAR + GLU Uygulaması
+        # Attention çıktısını bir "kapıdan" geçiriyoruz.
+        # Residual connection (x + out) öncesi veya sonrası kullanılabilir, 
+        # burada doğrudan attention çıktısına uygulanmış hali:
+        gate_input = self.linear_glu(out) 
+        gated_out = self.glu(gate_input) # Boyut tekrar d_model'e düşer
+        
+        # Residual + Norm
+        output = self.layer_norm(x + gated_out)
+        
+        return output, attention
+    
 def train(
     args= None,
     train_loader= None,
@@ -194,6 +260,7 @@ def train(
     adaptLayer = None,
     adaptLayerClip = None,
     encoder_image_lr_scheduler = None,
+    gateSelf = None,
 
 ):
     """
@@ -277,6 +344,9 @@ def train(
           resnet_B_adapt, clip_B_adapt = adaptLayer(resnet_B, clip_out_B)
           resnet_A_normed, clip_A_normed = layerNormalizeLayer(resnet_A_adapt, clip_A_adapt)
           resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B_adapt, clip_B_adapt)
+
+          resnet_A_normed = gateSelf(resnet_A_normed)
+          resnet_B_normed = gateSelf(resnet_B_normed)
 
           final_A = torch.cat([resnet_A_normed, clip_A_normed], dim=1)
           final_B = torch.cat([resnet_B_normed, clip_B_normed], dim=1)
@@ -456,6 +526,7 @@ def save_checkpoint(args= None,
                     adaptLayer = None,
                     adaptLayerClip = None,
                     encoder_image_lr_scheduler = None,
+                    gateSelf= None,
                     ):
     import torch
     
@@ -498,6 +569,8 @@ def save_checkpoint(args= None,
         state['clip_encoder_optimizer'] = clip_encoder_optimizer.state_dict()
     if encoder_image_lr_scheduler is not None:
         state['encoder_image_lr_scheduler'] = encoder_image_lr_scheduler.state_dict()
+    if gateSelf is not None:
+        state['gateSelf'] = gateSelf.state_dict()
 
     # Kayıt Dizini Kontrolü
     directory = args.save_model_path
@@ -684,10 +757,12 @@ def main(args):
         adaptLayer = adaptLayer.cuda()
         layerNormalizeLayer = CustomLayerNorm()
         layerNormalizeLayer = layerNormalizeLayer.cuda()
+        gateSelf = GatedSelfAttention(512)
+        gateSelf = gateSelf.cuda()
     else:
         adaptLayerClip = AdaptLayerClip() 
         adaptLayerClip = adaptLayerClip.cuda()
-    
+        
     
     # ------------------------------ CLIP ENTEGRASYONU ------------------------------
     
@@ -731,6 +806,7 @@ def main(args):
                     epoch=epoch,
                     adaptLayer= adaptLayer,
                     layerNormalizeLayer=layerNormalizeLayer,
+                    gateSelf=gateSelf,
                 )
             else:
                 train(
@@ -756,6 +832,7 @@ def main(args):
                     decoder=decoder,
                     layerNormalizeLayer=layerNormalizeLayer,
                     adaptLayer=adaptLayer,
+                    gateSelf=gateSelf,
                     )
             else:
               metrics = evaluate_transformer(
@@ -796,6 +873,7 @@ def main(args):
                                     clip_encoder_image=clip_encoder_image,
                                     adaptLayer=adaptLayer,
                                     layerNormalizeLayer=layerNormalizeLayer,
+                                    gateSelf=gateSelf,
                                     )
                 else:
                     save_checkpoint(args,
@@ -840,6 +918,9 @@ def main(args):
         if 'adaptLayerClip' in checkpoint:
             adaptLayerClip.load_state_dict(checkpoint['adaptLayerClip'])
 
+        if 'gateSelf' in checkpoint:
+            gateSelf.load_state_dict(checkpoint['gateSelf'])
+
         # Check for CLIP specifically
         if 'clip_encoder_image' in checkpoint:
             clip_encoder_image.load_state_dict(checkpoint['clip_encoder_image'])
@@ -871,6 +952,7 @@ def main(args):
                     decoder=decoder,
                     layerNormalizeLayer=layerNormalizeLayer,
                     adaptLayer=adaptLayer,
+                    gateSelf= gateSelf,
                     )
         else:
               metrics = evaluate_transformer(
