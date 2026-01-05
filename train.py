@@ -260,7 +260,7 @@ def train(
     adaptLayer = None,
     adaptLayerClip = None,
     encoder_image_lr_scheduler = None,
-    #gateSelf = None,
+    gateSelf = None,
 
 ):
     """
@@ -339,14 +339,36 @@ def train(
           
           resnet_A = encoder_image(imgs_A_resnet)
           resnet_B = encoder_image(imgs_B_resnet)
+          
 
           resnet_A_adapt, clip_A_adapt = adaptLayer(resnet_A, clip_out_A)
           resnet_B_adapt, clip_B_adapt = adaptLayer(resnet_B, clip_out_B)
+
+
           resnet_A_normed, clip_A_normed = layerNormalizeLayer(resnet_A_adapt, clip_A_adapt)
           resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B_adapt, clip_B_adapt)
 
-          #resnet_A_normed = gateSelf(resnet_A_normed)
-          #resnet_B_normed = gateSelf(resnet_B_normed)
+            # train fonksiyonu içinde (satır 194 civarı)
+            # Girdi: [Batch, 512, 14, 14]
+
+            # 1. Kanalı sona alıp düzleştirin: [Batch, 196, 512]
+          b, c, h, w = resnet_A_normed.shape
+          resnet_A_flat = resnet_A_normed.permute(0, 2, 3, 1).view(b, h*w, c) 
+
+            # 2. Attention uygulayın (Çıktı yine [Batch, 196, 512] olacak)
+          resnet_A_att, _ = gateSelf(resnet_A_flat)
+
+            # 3. Tekrar [Batch, 512, 14, 14] formatına dönün (Concat için gerekli)
+          resnet_A_normed = resnet_A_att.view(b, h, w, c).permute(0, 3, 1, 2)
+
+          b, c, h, w = resnet_B_normed.shape
+          resnet_A_flat = resnet_B_normed.permute(0, 2, 3, 1).view(b, h*w, c) 
+
+            # 2. Attention uygulayın (Çıktı yine [Batch, 196, 512] olacak)
+          resnet_A_att, _ = gateSelf(resnet_A_flat)
+
+            # 3. Tekrar [Batch, 512, 14, 14] formatına dönün (Concat için gerekli)
+          resnet_B_normed = resnet_A_att.view(b, h, w, c).permute(0, 3, 1, 2)
 
           final_A = torch.cat([resnet_A_normed, clip_A_normed], dim=1)
           final_B = torch.cat([resnet_B_normed, clip_B_normed], dim=1)
@@ -526,7 +548,7 @@ def save_checkpoint(args= None,
                     adaptLayer = None,
                     adaptLayerClip = None,
                     encoder_image_lr_scheduler = None,
-                    #gateSelf= None,
+                    gateSelf= None,
                     ):
     import torch
     
@@ -569,8 +591,8 @@ def save_checkpoint(args= None,
         state['clip_encoder_optimizer'] = clip_encoder_optimizer.state_dict()
     if encoder_image_lr_scheduler is not None:
         state['encoder_image_lr_scheduler'] = encoder_image_lr_scheduler.state_dict()
-    #if gateSelf is not None:
-    #    state['gateSelf'] = gateSelf.state_dict()
+    if gateSelf is not None:
+        state['gateSelf'] = gateSelf.state_dict()
 
     # Kayıt Dizini Kontrolü
     directory = args.save_model_path
@@ -662,8 +684,8 @@ def main(args):
         adaptLayer = adaptLayer.cuda()
         layerNormalizeLayer = CustomLayerNorm()
         layerNormalizeLayer = layerNormalizeLayer.cuda()
-        #gateSelf = GatedSelfAttention(512)
-        #gateSelf = gateSelf.cuda()
+        gateSelf = GatedSelfAttention(512)
+        gateSelf = gateSelf.cuda()
     else:
         adaptLayerClip = AdaptLayerClip() 
         adaptLayerClip = adaptLayerClip.cuda()
@@ -824,7 +846,7 @@ def main(args):
                     epoch=epoch,
                     adaptLayer= adaptLayer,
                     layerNormalizeLayer=layerNormalizeLayer,
-                    #gateSelf=gateSelf,
+                    gateSelf=gateSelf,
                 )
             else:
                 train(
@@ -850,7 +872,7 @@ def main(args):
                     decoder=decoder,
                     layerNormalizeLayer=layerNormalizeLayer,
                     adaptLayer=adaptLayer,
-                    #gateSelf=gateSelf,
+                    gateSelf=gateSelf,
                     )
             else:
               metrics = evaluate_transformer(
@@ -891,7 +913,7 @@ def main(args):
                                     clip_encoder_image=clip_encoder_image,
                                     adaptLayer=adaptLayer,
                                     layerNormalizeLayer=layerNormalizeLayer,
-                                    #gateSelf=gateSelf,
+                                    gateSelf=gateSelf,
                                     )
                 else:
                     save_checkpoint(args,
@@ -970,7 +992,7 @@ def main(args):
                     decoder=decoder,
                     layerNormalizeLayer=layerNormalizeLayer,
                     adaptLayer=adaptLayer,
-                    #gateSelf= gateSelf,
+                    gateSelf= gateSelf,
                     )
         else:
               metrics = evaluate_transformer(
