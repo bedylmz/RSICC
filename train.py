@@ -671,21 +671,7 @@ def main(args):
     
     # ------------------------------ CLIP ENTEGRASYONU ------------------------------
     
-    #------------------------ TEXT ENCODER ENTEGRASYONU ----------------
-    if(args.clip_text_encoder):
-        from CLIP_modules.tokenization_clip import SimpleTokenizer
-
-        clip_tokenizer = SimpleTokenizer()
-        clip_model_ref = clip.clip_model.clip
-        
-        # Köprü fonksiyonunu çalıştır
-        bridge_embeddings_and_transfer(
-            rsicc_decoder=decoder, 
-            clip_model=clip_model_ref, 
-            clip_tokenizer=clip_tokenizer, 
-            rsicc_word_map=word_map
-        )
-    #------------------------ TEXT ENCODER ENTEGRASYONU ----------------
+    
 
     # Initialize
     # Encoder
@@ -796,6 +782,22 @@ def main(args):
         num_workers=args.workers,
         pin_memory=True,
     )
+
+    #------------------------ TEXT ENCODER ENTEGRASYONU ----------------
+    if(args.clip_text_encoder):
+        from CLIP_modules.tokenization_clip import SimpleTokenizer
+
+        clip_tokenizer = SimpleTokenizer()
+        clip_model_ref = clip.clip_model.clip
+        
+        # Köprü fonksiyonunu çalıştır
+        bridge_embeddings_and_transfer(
+            rsicc_decoder=decoder, 
+            clip_model=clip_model_ref, 
+            clip_tokenizer=clip_tokenizer, 
+            rsicc_word_map=word_map
+        )
+    #------------------------ TEXT ENCODER ENTEGRASYONU ----------------
 
 
     if(args.eval_mode == False):
