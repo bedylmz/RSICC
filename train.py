@@ -174,70 +174,6 @@ class AdaptLayerClip(nn.Module):
         
         return c_feat
 
-class SelfAttentionBlockResnet(nn.Module):
-    def __init__(self, in_channels):
-        super(SelfAttentionBlockResnet, self).__init__()
-        
-        self.in_channels = in_channels
-        
-        # We typically reduce the channel dimension for Q and K to save memory
-        # (e.g., in_channels // 8). For V, we keep it or reduce it.
-        # Here we use in_channels // 8 for efficiency.
-        self.inter_channels = in_channels // 8
-
-        # 1. Projections (1x1 Convolutions act like Linear layers for images)
-        self.query_conv = nn.Conv2d(in_channels, self.inter_channels, kernel_size=1)
-        self.key_conv   = nn.Conv2d(in_channels, self.inter_channels, kernel_size=1)
-        self.value_conv = nn.Conv2d(in_channels, in_channels, kernel_size=1)
-
-        # 2. Learnable Scale Parameter (Gamma)
-        # Initializes to 0 so the network starts as a standard ResNet
-        # and slowly learns to use attention.
-        self.gamma = nn.Parameter(torch.zeros(1))
-        
-        # Softmax for attention scores
-        self.softmax = nn.Softmax(dim=-1)
-
-    def forward(self, x):
-        """
-        Input:  [Batch, C, H, W]  (e.g., ResNet output)
-        Output: [Batch, C, H, W]  (Same shape, refined features)
-        """
-        m_batchsize, C, width, height = x.size()
-        
-        # --- Step 1: Query & Key (Calculate Attention Map) ---
-        
-        # Proj -> [B, C', H, W] -> View [B, C', N] -> Permute [B, N, C']
-        proj_query = self.query_conv(x).view(m_batchsize, -1, width*height).permute(0, 2, 1)
-        
-        # Proj -> [B, C', H, W] -> View [B, C', N]
-        proj_key = self.key_conv(x).view(m_batchsize, -1, width*height)
-        
-        # Matrix Multiply: [B, N, C'] x [B, C', N] -> [B, N, N]
-        energy = torch.bmm(proj_query, proj_key)
-        
-        # Attention Map (N x N) -> Relationship between every pixel and every other pixel
-        attention = self.softmax(energy) 
-        
-        # --- Step 2: Value (Apply Attention) ---
-        
-        # Proj -> [B, C, H, W] -> View [B, C, N]
-        proj_value = self.value_conv(x).view(m_batchsize, -1, width*height)
-
-        # Matrix Multiply: [B, C, N] x [B, N, N] -> [B, C, N]
-        out = torch.bmm(proj_value, attention.permute(0, 2, 1))
-        
-        # --- Step 3: Reshape & Residual Connection ---
-        
-        # Reshape back to image format: [B, C, H, W]
-        out = out.view(m_batchsize, C, width, height)
-        
-        # Add residual connection with learnable scale
-        # output = x + (gamma * attention_output)
-        out = self.gamma * out + x
-        
-        return out
-
 def train(
     args= None,
     train_loader= None,
@@ -259,7 +195,6 @@ def train(
     adaptLayerClip = None,
     encoder_image_lr_scheduler = None,
 
-    selfAttentionResnet = None
 ):
     """
     Performs one epoch's training.
@@ -342,9 +277,6 @@ def train(
           resnet_B_adapt, clip_B_adapt = adaptLayer(resnet_B, clip_out_B)
           resnet_A_normed, clip_A_normed = layerNormalizeLayer(resnet_A_adapt, clip_A_adapt)
           resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B_adapt, clip_B_adapt)
-
-          resnet_A_normed = selfAttentionResnet(resnet_A_normed)
-          resnet_B_normed = selfAttentionResnet(resnet_B_normed)
 
           final_A = torch.cat([resnet_A_normed, clip_A_normed], dim=1)
           final_B = torch.cat([resnet_B_normed, clip_B_normed], dim=1)
@@ -524,7 +456,6 @@ def save_checkpoint(args= None,
                     adaptLayer = None,
                     adaptLayerClip = None,
                     encoder_image_lr_scheduler = None,
-                    selfAttentionResnet = None
                     ):
     import torch
     
@@ -567,9 +498,6 @@ def save_checkpoint(args= None,
         state['clip_encoder_optimizer'] = clip_encoder_optimizer.state_dict()
     if encoder_image_lr_scheduler is not None:
         state['encoder_image_lr_scheduler'] = encoder_image_lr_scheduler.state_dict()
-
-    if selfAttentionResnet is not None:
-        state['selfAttentionResnet'] = selfAttentionResnet.state_dict()
 
     # Kayıt Dizini Kontrolü
     directory = args.save_model_path
@@ -756,13 +684,9 @@ def main(args):
         adaptLayer = adaptLayer.cuda()
         layerNormalizeLayer = CustomLayerNorm()
         layerNormalizeLayer = layerNormalizeLayer.cuda()
-        selfAttentionResnet = SelfAttentionBlockResnet(in_channels=512)
-        selfAttentionResnet = selfAttentionResnet.cuda()
     else:
         adaptLayerClip = AdaptLayerClip() 
         adaptLayerClip = adaptLayerClip.cuda()
-
-
     
     
     # ------------------------------ CLIP ENTEGRASYONU ------------------------------
@@ -807,7 +731,6 @@ def main(args):
                     epoch=epoch,
                     adaptLayer= adaptLayer,
                     layerNormalizeLayer=layerNormalizeLayer,
-                    selfAttentionResnet= selfAttentionResnet
                 )
             else:
                 train(
@@ -833,7 +756,6 @@ def main(args):
                     decoder=decoder,
                     layerNormalizeLayer=layerNormalizeLayer,
                     adaptLayer=adaptLayer,
-                    selfAttentionResnet=selfAttentionResnet
                     )
             else:
               metrics = evaluate_transformer(

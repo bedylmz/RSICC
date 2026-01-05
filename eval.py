@@ -9,9 +9,19 @@ import argparse
 import time
 from torch import nn
 
-normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                             std=[0.229, 0.224, 0.225])
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+class BatchNormalize(torch.nn.Module):
+    def __init__(self, mean, std, device):
+        super().__init__()
+        self.mean = torch.tensor(mean).view(1, 3, 1, 1).to(device)
+        self.std = torch.tensor(std).view(1, 3, 1, 1).to(device)
+
+    def forward(self, tensor):
+        # Tensor shape: [Batch, 3, H, W]
+        return (tensor - self.mean) / self.std
+
 
 def save_captions(args, word_map, hypotheses, references):
     result_json_file = {}
@@ -64,7 +74,6 @@ def evaluate_transformer(
         layerNormalizeLayer = None,
         adaptLayer = None,
         adaptLayerClip = None,
-        selfAttentionResnet = None
         ):
     # Load model
     encoder_feat = encoder_feat.to(device)
@@ -95,13 +104,19 @@ def evaluate_transformer(
     """
     beam_size = args.beam_size
     Caption_End = False
+
+    transform = transforms.Compose([
+        transforms.Resize((224, 224), interpolation=transforms.InterpolationMode.BICUBIC)
+    ])
+
     loader = torch.utils.data.DataLoader(
         CaptionDataset(args.data_folder, args.data_name, args.Split, 
-                       transform=transforms.Compose([
-                           transforms.Resize((224, 224)),
-                           normalize
-                       ])),
-        batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
+                    transform=transform),
+        batch_size=args.batch_size,
+        shuffle=True,
+        num_workers=args.workers,
+        pin_memory=True,
+    )
 
     # Lists to store references (true captions), and hypothesis (prediction) for each image
     # If for n images, we have n hypotheses, and references a, b, c... for each image, we need -
@@ -116,6 +131,18 @@ def evaluate_transformer(
     nochange_acc=0
 
     with torch.no_grad():
+
+        # ResNet İstatistikleri
+        norm_resnet = BatchNormalize(mean=[0.485, 0.456, 0.406], 
+                                    std=[0.229, 0.224, 0.225], 
+                                    device=device)
+        
+        # CLIP İstatistikleri
+        norm_clip = BatchNormalize(mean=[0.48145466, 0.4578275, 0.40821073], 
+                                std=[0.26862954, 0.26130258, 0.27577711], 
+                                device=device)
+        # -----------------------------------------------
+
         for i, (img_pairs, caps, caplens, allcaps) in enumerate(
                 tqdm(loader, desc=args.Split + " EVALUATING AT BEAM SIZE " + str(beam_size))):
             # 5 image is the same when "shuffle=False" of the dataloader
@@ -134,22 +161,25 @@ def evaluate_transformer(
             if(args.dual_branch == True ):
                 b, t, c, h, w = img_pairs.shape
                 imgs_full = img_pairs.view(-1, c, h, w) 
+                imgs_full_clip = norm_clip(imgs_full) # CLIP için normalize et
+
 
                 # 2. Pass the flattened pairs and set frames to 2
                 # Note: Remove parentheses from .shape (it is a property, not a function)
-                clip_out = clip_encoder_image(imgs_full, 2)
+                clip_out = clip_encoder_image(imgs_full_clip, 2)
                 clip_out_A = clip_out[:,0,:] # 768 100 b
                 clip_out_B = clip_out[:,50,:]
-                resnet_A = encoder_image(imgs_A)
-                resnet_B = encoder_image(imgs_B)
+                
+                imgs_A_resnet = norm_resnet(imgs_A) # ResNet için normalize et
+                imgs_B_resnet = norm_resnet(imgs_B)
+
+                resnet_A = encoder_image(imgs_A_resnet)
+                resnet_B = encoder_image(imgs_B_resnet)
 
                 resnet_A_adapt, clip_A_adapt = adaptLayer(resnet_A, clip_out_A)
                 resnet_B_adapt, clip_B_adapt = adaptLayer(resnet_B, clip_out_B)
                 resnet_A_normed, clip_A_normed = layerNormalizeLayer(resnet_A_adapt, clip_A_adapt)
                 resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B_adapt, clip_B_adapt)
-
-                resnet_A_normed = selfAttentionResnet(resnet_A_normed)
-                resnet_B_normed = selfAttentionResnet(resnet_B_normed)
 
                 final_A = torch.cat([resnet_A_normed, clip_A_normed], dim=1)
                 final_B = torch.cat([resnet_B_normed, clip_B_normed], dim=1)
@@ -161,10 +191,12 @@ def evaluate_transformer(
             else:
                 b, t, c, h, w = img_pairs.shape
                 imgs_full = img_pairs.view(-1, c, h, w) 
+                imgs_full_clip = norm_clip(imgs_full) # CLIP için normalize et
+
 
                 # 2. Pass the flattened pairs and set frames to 2
                 # Note: Remove parentheses from .shape (it is a property, not a function)
-                clip_out = clip_encoder_image(imgs_full, 2)
+                clip_out = clip_encoder_image(imgs_full_clip, 2)
                 clip_out_A = clip_out[:,0,:] # 768 100 b
                 clip_out_B = clip_out[:,50,:]
                 clip_out_A = adaptLayerClip(clip_out_A)
