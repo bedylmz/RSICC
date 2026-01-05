@@ -727,6 +727,7 @@ def main(args):
         layerNormalizeLayer = CustomLayerNorm()
         layerNormalizeLayer = layerNormalizeLayer.cuda()
         selfAttentionResnet = SelfAttentionBlockResnet(in_channels=512)
+        selfAttentionResnet = selfAttentionResnet.cuda()
     else:
         adaptLayerClip = AdaptLayerClip() 
         adaptLayerClip = adaptLayerClip.cuda()
