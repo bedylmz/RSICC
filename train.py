@@ -22,7 +22,7 @@ seed = 1
 torch.manual_seed(seed)
 
 class CLIPVisualEncoder(nn.Module):
-    def __init__(self, clip_model_path, target_dim):
+    def __init__(self, clip_model_path):
         super().__init__()
         # Prepare model
         cache_dir = os.path.join(str(PYTORCH_PRETRAINED_BERT_CACHE),"distributed")
