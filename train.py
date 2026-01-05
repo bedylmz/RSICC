@@ -21,6 +21,19 @@ from CLIP_modules.file_utils import PYTORCH_PRETRAINED_BERT_CACHE
 seed = 1
 torch.manual_seed(seed)
 
+import torch
+import torchvision.transforms.functional as F
+
+class BatchNormalize(torch.nn.Module):
+    def __init__(self, mean, std, device):
+        super().__init__()
+        self.mean = torch.tensor(mean).view(1, 3, 1, 1).to(device)
+        self.std = torch.tensor(std).view(1, 3, 1, 1).to(device)
+
+    def forward(self, tensor):
+        # Tensor shape: [Batch, 3, H, W]
+        return (tensor - self.mean) / self.std
+
 class CLIPVisualEncoder(nn.Module):
     def __init__(self, clip_model_path):
         super().__init__()
@@ -276,6 +289,17 @@ def train(
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    # ResNet İstatistikleri
+    norm_resnet = BatchNormalize(mean=[0.485, 0.456, 0.406], 
+                                 std=[0.229, 0.224, 0.225], 
+                                 device=device)
+    
+    # CLIP İstatistikleri
+    norm_clip = BatchNormalize(mean=[0.48145466, 0.4578275, 0.40821073], 
+                               std=[0.26862954, 0.26130258, 0.27577711], 
+                               device=device)
+    # -----------------------------------------------
+
     for i, (img_pairs, caps, caplens) in enumerate(train_loader):
 
         data_time.update(time.time() - start)
@@ -300,14 +324,19 @@ def train(
         if(args.dual_branch == True ):
           b, t, c, h, w = img_pairs.shape
           imgs_full = img_pairs.view(-1, c, h, w) 
+          imgs_full_clip = norm_clip(imgs_full) # CLIP için normalize et
 
           # 2. Pass the flattened pairs and set frames to 2
           # Note: Remove parentheses from .shape (it is a property, not a function)
-          clip_out = clip_encoder_image(imgs_full, 2)
+          clip_out = clip_encoder_image(imgs_full_clip, 2)
           clip_out_A = clip_out[:,0,:] # 768 100 b
           clip_out_B = clip_out[:,50,:]
-          resnet_A = encoder_image(imgs_A)
-          resnet_B = encoder_image(imgs_B)
+
+          imgs_A_resnet = norm_resnet(imgs_A) # ResNet için normalize et
+          imgs_B_resnet = norm_resnet(imgs_B)
+          
+          resnet_A = encoder_image(imgs_A_resnet)
+          resnet_B = encoder_image(imgs_B_resnet)
 
           resnet_A_adapt, clip_A_adapt = adaptLayer(resnet_A, clip_out_A)
           resnet_B_adapt, clip_B_adapt = adaptLayer(resnet_B, clip_out_B)
@@ -327,10 +356,10 @@ def train(
         else:
           b, t, c, h, w = img_pairs.shape
           imgs_full = img_pairs.view(-1, c, h, w) 
-
+          imgs_full_clip = norm_clip(imgs_full)
           # 2. Pass the flattened pairs and set frames to 2
           # Note: Remove parentheses from .shape (it is a property, not a function)
-          clip_out = clip_encoder_image(imgs_full, 2)
+          clip_out = clip_encoder_image(imgs_full_clip, 2)
           clip_out_A = clip_out[:,0,:] # 768 100 b
           clip_out_B = clip_out[:,50,:]
           clip_out_A = adaptLayerClip(clip_out_A)
@@ -699,14 +728,15 @@ def main(args):
     criterion = nn.CrossEntropyLoss(ignore_index=0).to(device)
 
     # Custom dataloaders
-    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    # Önce Resize ekliyoruz, sonra Normalize yapıyoruz
+    # Burada SADECE boyutlandırma yapıyoruz. Normalizasyonu döngü içine taşıdık.
+    # CLIP genelde Bicubic sever, ResNet de buna uyum sağlar.
+    train_transform = transforms.Compose([
+        transforms.Resize((224, 224), interpolation=transforms.InterpolationMode.BICUBIC)
+    ])
+
     train_loader = torch.utils.data.DataLoader(
         CaptionDataset(args.data_folder, args.data_name, "TRAIN", 
-                    transform=transforms.Compose([
-                        transforms.Resize((224, 224)),
-                        normalize
-                    ])),
+                    transform=train_transform),
         batch_size=args.batch_size,
         shuffle=True,
         num_workers=args.workers,
