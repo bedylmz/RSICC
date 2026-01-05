@@ -369,7 +369,7 @@ if __name__ == '__main__':
     parser.add_argument('--decoder', default="trans", help="decoder img2txt")  #
     parser.add_argument('--Split', default="TEST", help='which')
     parser.add_argument('--epoch', default="epoch", help='which')
-    parser.add_argument('--beam_size', type=int, default=1, help='beam_size.')
+    parser.add_argument('--beam_size', type=int, default=64, help='beam_size.')
     parser.add_argument('--path', default="./models_checkpoint/", help='model checkpoint.')
 
 
