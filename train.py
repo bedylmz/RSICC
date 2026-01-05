@@ -18,8 +18,6 @@ from eval import evaluate_transformer
 from CLIP_modules.modeling import CLIP4IDC
 from CLIP_modules.file_utils import PYTORCH_PRETRAINED_BERT_CACHE
 
-from mg_models.transformer import MemoryAugmentedEncoder, GlobalGroupingAttention_with_DC
-
 seed = 1
 torch.manual_seed(seed)
 
@@ -44,10 +42,6 @@ class CLIPVisualEncoder(nn.Module):
         # Modeli Float32 (Tam Hassasiyet) moduna zorla
         self.visual_encoder.float()
         self.visual_encoder.cuda()
-
-        # 3. Boyut Eşitleyici (Projection Layer)
-        self.projection = nn.Linear(768, target_dim) # 768 olmasının sebebi custom forward yapmamız
-        self.projection.float()
 
         # 4. CLIP encoder (freeze) 
         for param in self.visual_encoder.parameters():
@@ -121,16 +115,18 @@ class AdaptLayer(nn.Module):
         # --- CLIP KOLU (DİKKAT) ---
         # CLIP vektörü düz ([B, 768]) olduğu için Conv2d'ye girmeden önce
         # onu 4 boyutlu hale getirip genişletmeliyiz (3. Madde burada uygulanır).
-        
-        # 1. Boyut ekle: [Batch, 768, 1, 1]
+
+        # 1. Önce sadece boyut ekle: [B, 768, 1, 1]
         clip_grid = clip_vec.view(clip_vec.size(0), clip_vec.size(1), 1, 1)
+
+        # 2. ÖNCE PROJEKSİYON YAP (Sadece 1x1 üzerinde işlem yapıyoruz, çok hızlı)
+        # Girdi: [B, 768, 1, 1] -> Çıktı: [B, 512, 1, 1]
+        c_feat_1x1 = self.clip_adapt(clip_grid)
         
-        # 2. Kopyala (Broadcasting): [Batch, 768, 14, 14]
-        clip_grid = clip_grid.expand(-1, -1, 14, 14)
-        
-        # 3. Adaptasyon katmanına sok
-        # Girdi: [B, 768, 14, 14] -> Çıktı: [B, 512, 14, 14]
-        c_feat = self.clip_adapt(clip_grid)
+        # 3. EN SON GENİŞLET (Hesaplanmış sonucu kopyala)
+        # [B, 512, 1, 1] -> [B, 512, 14, 14]
+        H, W = g_feat.shape[2], g_feat.shape[3] # ResNet boyutlarına dinamik uyum sağlar
+        c_feat = c_feat_1x1.expand(-1, -1, H, W)
         
         return g_feat, c_feat
 
@@ -165,6 +161,70 @@ class AdaptLayerClip(nn.Module):
         
         return c_feat
 
+class SelfAttentionBlockResnet(nn.Module):
+    def __init__(self, in_channels):
+        super(SelfAttentionBlockResnet, self).__init__()
+        
+        self.in_channels = in_channels
+        
+        # We typically reduce the channel dimension for Q and K to save memory
+        # (e.g., in_channels // 8). For V, we keep it or reduce it.
+        # Here we use in_channels // 8 for efficiency.
+        self.inter_channels = in_channels // 8
+
+        # 1. Projections (1x1 Convolutions act like Linear layers for images)
+        self.query_conv = nn.Conv2d(in_channels, self.inter_channels, kernel_size=1)
+        self.key_conv   = nn.Conv2d(in_channels, self.inter_channels, kernel_size=1)
+        self.value_conv = nn.Conv2d(in_channels, in_channels, kernel_size=1)
+
+        # 2. Learnable Scale Parameter (Gamma)
+        # Initializes to 0 so the network starts as a standard ResNet
+        # and slowly learns to use attention.
+        self.gamma = nn.Parameter(torch.zeros(1))
+        
+        # Softmax for attention scores
+        self.softmax = nn.Softmax(dim=-1)
+
+    def forward(self, x):
+        """
+        Input:  [Batch, C, H, W]  (e.g., ResNet output)
+        Output: [Batch, C, H, W]  (Same shape, refined features)
+        """
+        m_batchsize, C, width, height = x.size()
+        
+        # --- Step 1: Query & Key (Calculate Attention Map) ---
+        
+        # Proj -> [B, C', H, W] -> View [B, C', N] -> Permute [B, N, C']
+        proj_query = self.query_conv(x).view(m_batchsize, -1, width*height).permute(0, 2, 1)
+        
+        # Proj -> [B, C', H, W] -> View [B, C', N]
+        proj_key = self.key_conv(x).view(m_batchsize, -1, width*height)
+        
+        # Matrix Multiply: [B, N, C'] x [B, C', N] -> [B, N, N]
+        energy = torch.bmm(proj_query, proj_key)
+        
+        # Attention Map (N x N) -> Relationship between every pixel and every other pixel
+        attention = self.softmax(energy) 
+        
+        # --- Step 2: Value (Apply Attention) ---
+        
+        # Proj -> [B, C, H, W] -> View [B, C, N]
+        proj_value = self.value_conv(x).view(m_batchsize, -1, width*height)
+
+        # Matrix Multiply: [B, C, N] x [B, N, N] -> [B, C, N]
+        out = torch.bmm(proj_value, attention.permute(0, 2, 1))
+        
+        # --- Step 3: Reshape & Residual Connection ---
+        
+        # Reshape back to image format: [B, C, H, W]
+        out = out.view(m_batchsize, C, width, height)
+        
+        # Add residual connection with learnable scale
+        # output = x + (gamma * attention_output)
+        out = self.gamma * out + x
+        
+        return out
+
 def train(
     args= None,
     train_loader= None,
@@ -185,6 +245,8 @@ def train(
     adaptLayer = None,
     adaptLayerClip = None,
     encoder_image_lr_scheduler = None,
+
+    selfAttentionResnet = None
 ):
     """
     Performs one epoch's training.
@@ -252,6 +314,9 @@ def train(
           resnet_A_normed, clip_A_normed = layerNormalizeLayer(resnet_A_adapt, clip_A_adapt)
           resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B_adapt, clip_B_adapt)
 
+          resnet_A_normed = selfAttentionResnet(resnet_A_normed)
+          resnet_B_normed = selfAttentionResnet(resnet_B_normed)
+
           final_A = torch.cat([resnet_A_normed, clip_A_normed], dim=1)
           final_B = torch.cat([resnet_B_normed, clip_B_normed], dim=1)
 
@@ -274,7 +339,7 @@ def train(
           fused_feat = encoder_feat(
               clip_out_A,
               clip_out_B,
-          ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
+            ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
 
         scores, caps_sorted, decode_lengths, sort_ind = decoder(fused_feat, caps, caplens)
 
@@ -429,7 +494,9 @@ def save_checkpoint(args= None,
                     layerNormalizeLayer = None,
                     adaptLayer = None,
                     adaptLayerClip = None,
-                    encoder_image_lr_scheduler = None,):
+                    encoder_image_lr_scheduler = None,
+                    selfAttentionResnet = None
+                    ):
     import torch
     
     """
@@ -471,6 +538,9 @@ def save_checkpoint(args= None,
         state['clip_encoder_optimizer'] = clip_encoder_optimizer.state_dict()
     if encoder_image_lr_scheduler is not None:
         state['encoder_image_lr_scheduler'] = encoder_image_lr_scheduler.state_dict()
+
+    if selfAttentionResnet is not None:
+        state['selfAttentionResnet'] = selfAttentionResnet.state_dict()
 
     # Kayıt Dizini Kontrolü
     directory = args.save_model_path
@@ -525,7 +595,7 @@ def validate_loss(val_loader, encoder_image, clip_encoder_image, encoder_feat, d
     return losses.avg
 
 
-def main(args, meteor_output=None):
+def main(args):
     print(args)
     global metrics_list
     print(time.strftime("%m-%d  %H : %M : %S", time.localtime(time.time())))
@@ -644,7 +714,7 @@ def main(args, meteor_output=None):
     )
 
     # ------------------------------ CLIP ENTEGRASYONU ------------------------------
-    clip = CLIPVisualEncoder(args.clip_path,1024)
+    clip = CLIPVisualEncoder(args.clip_path)
 
     clip_encoder_image = clip.visual_encoder.float()
     clip_encoder_image = clip_encoder_image.cuda()
@@ -656,9 +726,14 @@ def main(args, meteor_output=None):
         adaptLayer = adaptLayer.cuda()
         layerNormalizeLayer = CustomLayerNorm()
         layerNormalizeLayer = layerNormalizeLayer.cuda()
+        selfAttentionResnet = SelfAttentionBlockResnet(in_channels=512)
     else:
         adaptLayerClip = AdaptLayerClip() 
         adaptLayerClip = adaptLayerClip.cuda()
+
+
+    
+    
     # ------------------------------ CLIP ENTEGRASYONU ------------------------------
     
     #------------------------ TEXT ENCODER ENTEGRASYONU ----------------
@@ -700,7 +775,8 @@ def main(args, meteor_output=None):
                     decoder_lr_scheduler=decoder_lr_scheduler,
                     epoch=epoch,
                     adaptLayer= adaptLayer,
-                    layerNormalizeLayer=layerNormalizeLayer
+                    layerNormalizeLayer=layerNormalizeLayer,
+                    selfAttentionResnet= selfAttentionResnet
                 )
             else:
                 train(
@@ -725,7 +801,9 @@ def main(args, meteor_output=None):
                     encoder_feat=encoder_feat,
                     decoder=decoder,
                     layerNormalizeLayer=layerNormalizeLayer,
-                    adaptLayer=adaptLayer)
+                    adaptLayer=adaptLayer,
+                    selfAttentionResnet=selfAttentionResnet
+                    )
             else:
               metrics = evaluate_transformer(
                     args, 

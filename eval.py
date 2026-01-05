@@ -64,6 +64,7 @@ def evaluate_transformer(
         layerNormalizeLayer = None,
         adaptLayer = None,
         adaptLayerClip = None,
+        selfAttentionResnet = None
         ):
     # Load model
     encoder_feat = encoder_feat.to(device)
@@ -146,6 +147,9 @@ def evaluate_transformer(
                 resnet_B_adapt, clip_B_adapt = adaptLayer(resnet_B, clip_out_B)
                 resnet_A_normed, clip_A_normed = layerNormalizeLayer(resnet_A_adapt, clip_A_adapt)
                 resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B_adapt, clip_B_adapt)
+
+                resnet_A_normed = selfAttentionResnet(resnet_A_normed)
+                resnet_B_normed = selfAttentionResnet(resnet_B_normed)
 
                 final_A = torch.cat([resnet_A_normed, clip_A_normed], dim=1)
                 final_B = torch.cat([resnet_B_normed, clip_B_normed], dim=1)
