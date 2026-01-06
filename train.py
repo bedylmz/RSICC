@@ -557,8 +557,7 @@ def save_checkpoint(args= None,
                     encoder_image_lr_scheduler = None,
                     gateSelf= None,
                     ):
-    import torch
-    
+        
     """
     Model checkpoint'ini kaydeder.
     
@@ -676,15 +675,17 @@ def main(args):
     word_map_file = os.path.join(args.data_folder, "WORDMAP_" + args.data_name + ".json")
     with open(word_map_file, "r") as j:
         word_map = json.load(j)
-
     
     # ------------------------------ CLIP ENTEGRASYONU ------------------------------
-    clip = CLIPVisualEncoder(args.clip_path)
 
-    clip_encoder_image = clip.visual_encoder.float()
-    clip_encoder_image = clip_encoder_image.cuda()
+    if(args.eval_just_RSICC == False):
 
-    clip_encoder_image.eval()
+        clip = CLIPVisualEncoder(args.clip_path)
+
+        clip_encoder_image = clip.visual_encoder.float()
+        clip_encoder_image = clip_encoder_image.cuda()
+
+        clip_encoder_image.eval()
 
     if(args.dual_branch == True):
         adaptLayer = AdaptLayer()
@@ -697,22 +698,19 @@ def main(args):
     else:
         adaptLayerClip = AdaptLayerClip() 
         adaptLayerClip = adaptLayerClip.cuda()
-        
     
     # ------------------------------ CLIP ENTEGRASYONU ------------------------------
-    
-    
 
     # Initialize
     # Encoder
-    if(args.dual_branch == True):
+    if(args.dual_branch == True or args.eval_just_RSICC == True):
         encoder_image = CNN_Encoder(NetType=args.encoder_image, method=args.decoder)
         # set the encoder_dim
     encoder_image_dim = 1024 # resnet101
 
     if args.encoder_feat == "MCCFormers_diff_as_Q":
         encoder_feat = MCCFormers_diff_as_Q(
-            feature_dim=1024,
+            feature_dim=encoder_image_dim,
             dropout=0.5,
             h=14,
             w=14,
@@ -777,7 +775,7 @@ def main(args):
     decoder_lr_scheduler = StepLR(decoder_optimizer, step_size=900, gamma=1)
 
     # Move to GPU, if available
-    if(args.dual_branch == True):
+    if(args.dual_branch == True or args.eval_just_RSICC == True):
         encoder_image = encoder_image.to(device)
     encoder_feat = encoder_feat.to(device)
     decoder = decoder.to(device)
@@ -815,6 +813,7 @@ def main(args):
     )
 
     #------------------------ TEXT ENCODER ENTEGRASYONU ----------------
+
     if(args.clip_text_encoder):
         from CLIP_modules.tokenization_clip import SimpleTokenizer
 
@@ -828,6 +827,7 @@ def main(args):
             clip_tokenizer=clip_tokenizer, 
             rsicc_word_map=word_map
         )
+        
     #------------------------ TEXT ENCODER ENTEGRASYONU ----------------
 
 
@@ -1039,8 +1039,8 @@ def main(args):
             )
         #------------------------ TEXT ENCODER ENTEGRASYONU ----------------
 
-        if(args.dual_branch == True):
-              if(args.gate ==  True):
+        if(args.dual_branch):
+              if(args.gate):
                 metrics = evaluate_transformer(
                         args, 
                         encoder_image=encoder_image, 
@@ -1060,6 +1060,13 @@ def main(args):
                         decoder=decoder,
                         layerNormalizeLayer=layerNormalizeLayer,
                         adaptLayer=adaptLayer,
+                        )
+        elif(args.eval_just_RSICC):
+            metrics = evaluate_transformer(
+                        args, 
+                        encoder_image=encoder_image, 
+                        encoder_feat=encoder_feat,
+                        decoder=decoder,
                         )
         else:
               metrics = evaluate_transformer(
@@ -1089,7 +1096,7 @@ if __name__ == "__main__":
     parser.add_argument("--decoder_n_layers", type=int, default=1)
     parser.add_argument("--feature_dim_de", type=int, default=1024)
     parser.add_argument("--dropout", type=float, default=0.5, help="dropout")
-    parser.add_argument("--eval_mode", type=bool, default=False)
+    parser.add_argument("--eval_mode", action='store_true')
     parser.add_argument("--checkpoint_path", type=str, default="")
 
     #params for CLIP4IDC implementation
@@ -1103,9 +1110,10 @@ if __name__ == "__main__":
     #params for dual branch
     parser.add_argument("--dual_branch", action='store_true', help="Enable dual branch")
     parser.add_argument("--gate", action='store_true', help="Enable dual branch")
+    parser.add_argument("--eval_just_RSICC", action='store_true', help="Enable dual branch")
 
     #params for text encoder
-    parser.add_argument("--clip_text_encoder", type=bool, default=False)
+    parser.add_argument("--clip_text_encoder", action='store_true')
 
     # Training parameters
     parser.add_argument("--epochs", type=int, default=40, help="number of epochs to train for (if early stopping is not triggered).")
