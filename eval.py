@@ -227,8 +227,13 @@ def evaluate_transformer(
                     final_B,
                 ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
             elif(args.eval_just_RSICC):
-                imgs_A = encoder_image(imgs_A)
-                imgs_B = encoder_image(imgs_B)  # encoder_image :[1, 1024,14,14]
+
+                imgs_A_resnet = norm_resnet(imgs_A) # ResNet için normalize et
+                imgs_B_resnet = norm_resnet(imgs_B)
+
+                imgs_A = encoder_image(imgs_A_resnet)
+                imgs_B = encoder_image(imgs_B_resnet)  # encoder_image :[1, 1024,14,14]
+
                 encoder_out = encoder_feat(imgs_A, imgs_B) # encoder_out: (S, batch, feature_dim)
             else:
                 b, t, c, h, w = img_pairs.shape
