@@ -19,8 +19,15 @@ from eval import evaluate_transformer
 from CLIP_modules.modeling import CLIP4IDC
 from CLIP_modules.file_utils import PYTORCH_PRETRAINED_BERT_CACHE
 
-seed = 1
+# Sabit seed yerine o anki zamanı kullanarak rastgelelik sağlayın
+seed = int(time.time())
 torch.manual_seed(seed)
+
+# Eğer GPU kullanıyorsanız oradaki rastgeleliği de serbest bırakın
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(seed)
+
+print(f"Kullanılan Random Seed: {seed}") # İleride gerekirse tekrar üretmek için loglayın
 
 import torch
 import torchvision.transforms.functional as F
@@ -384,6 +391,41 @@ def train(
                 final_A,
                 final_B,
             ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
+        elif(args.fusedclip):
+            b, t, c, h, w = img_pairs.shape
+            imgs_full = img_pairs.view(-1, c, h, w) 
+            imgs_full_clip = norm_clip(imgs_full) # CLIP için normalize et
+
+            # 2. Pass the flattened pairs and set frames to 2
+            # Note: Remove parentheses from .shape (it is a property, not a function)
+            clip_out = clip_encoder_image(imgs_full_clip, 2)
+            clip_out_A = clip_out[:,0,:] # 768 100 b
+            clip_out_B = clip_out[:,50,:]
+
+            clip_out_A = adaptLayerClip(clip_out_A)
+            clip_out_B = adaptLayerClip(clip_out_B)
+
+
+            imgs_A_resnet = norm_resnet(imgs_A) # ResNet için normalize et
+            imgs_B_resnet = norm_resnet(imgs_B)
+            
+            resnet_A = encoder_image(imgs_A_resnet)
+            resnet_B = encoder_image(imgs_B_resnet)
+
+            final_A = torch.cat([resnet_A_normed, clip_A_normed], dim=1)
+            final_B = torch.cat([resnet_B_normed, clip_B_normed], dim=1)
+
+            fused_feat = encoder_feat(
+                resnet_A,
+                resnet_B,
+            ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
+
+            clip_out =  torch.cat([clip_out_A, clip_out_B], dim=1)
+            clip_out =  clip_out.permute(1,2,0)
+
+            fused_feat = torch.cat([fused_feat, clip_out], dim=1)
+
+            
         else:
             b, t, c, h, w = img_pairs.shape
             imgs_full = img_pairs.view(-1, c, h, w) 
