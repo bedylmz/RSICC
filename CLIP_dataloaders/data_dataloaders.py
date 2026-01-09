@@ -37,6 +37,9 @@ def dataloader_levircc_test(args, tokenizer, subset="test"):
     else:
         DataSet_DataLoader = LEVIRCC_DataLoader_Caption
 
+    if( subset == 'train1'):
+        subset = 'train'
+
     levircc_testset = DataSet_DataLoader(
         subset=subset,  # type: ignore[arg-type]
         data_path=args.data_path,
@@ -57,5 +60,6 @@ DATALOADER_DICT = {}
 DATALOADER_DICT["levircc"] = {
     "train": dataloader_levircc_train,
     "val": dataloader_levircc_test,
+    "train1": dataloader_levircc_test,
     "test": dataloader_levircc_test,
 }

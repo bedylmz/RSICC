@@ -344,8 +344,8 @@ def train(
 
             # 2. Pass the flattened pairs and set frames to 2
             # Note: Remove parentheses from .shape (it is a property, not a function)
-            clip_out = clip_encoder_image(imgs_full_clip, 2)
-            clip_out_A = clip_out[:,0,:] # 768 100 b
+            clip_out = clip_encoder_image(imgs_full_clip, 2) # 768 100 b
+            clip_out_A = clip_out[:,0,:] # 768 1 b
             clip_out_B = clip_out[:,50,:]
 
             imgs_A_resnet = norm_resnet(imgs_A) # ResNet için normalize et

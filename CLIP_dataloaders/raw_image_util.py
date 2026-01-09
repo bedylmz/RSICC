@@ -11,7 +11,7 @@ import cv2
 
 
 class RawImageExtractorCV2:
-    def __init__(self, centercrop=False, size=224):
+    def __init__(self, centercrop=False, size=):
         self.centercrop = centercrop
         self.size = size
         self.transform = self._transform(self.size)

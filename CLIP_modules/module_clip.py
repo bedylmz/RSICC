@@ -382,7 +382,7 @@ class Transformer(nn.Module):
             *[ResidualAttentionBlock(width, heads, attn_mask) for _ in range(layers)],
         )
 
-    def forward(self, x: torch.Tensor, video_frame=-1):
+    def forward(self, x: torch.Tensor, video_frame=2):
         return self.resblocks((x, video_frame))[0]
 
 
@@ -395,7 +395,7 @@ class VisualTransformer(nn.Module):
         layers: int,
         heads: int,
         output_dim: int,
-        linear_patch: str = "2d",
+        linear_patch: str = "3d",
         intra_layers: int = 9,
     ):
         super().__init__()
@@ -447,7 +447,7 @@ class VisualTransformer(nn.Module):
                 bias=False,
             )
 
-    def forward(self, x: torch.Tensor, video_frame=-1, visualize=False):
+    def forward(self, x: torch.Tensor, video_frame=2, visualize=False):
         if self.linear_patch == "3d":
             assert video_frame != -1
             x_3d = x.reshape(
@@ -571,7 +571,7 @@ class CLIP(nn.Module):
         transformer_heads: int,
         transformer_layers: int,
         # vision linear of patch
-        linear_patch: str = "2d",
+        linear_patch: str = "3d",
         intra_layers: int = 9,
     ):
         super().__init__()
@@ -610,6 +610,8 @@ class CLIP(nn.Module):
         )
 
         self.visual_fusion = FeatureFusionModule(embed_dim)
+        self.change_projection = nn.Linear(vision_width * 2, vision_width) # width genelde 768 veya 1024'tür
+        self.change_projection_sem = nn.Linear(vision_width * 2, vision_width) # width genelde 768 veya 1024'tür
 
         self.vocab_size = vocab_size
         self.token_embedding = nn.Embedding(vocab_size, transformer_width)
@@ -630,6 +632,7 @@ class CLIP(nn.Module):
         nn.init.normal_(self.positional_embedding, std=0.01)
 
         if isinstance(self.visual, ModifiedResNet):
+            print("resnet visual")
             if self.visual.attnpool is not None:
                 std = self.visual.attnpool.c_proj.in_features**-0.5
                 nn.init.normal_(self.visual.attnpool.q_proj.weight, std=std)
@@ -710,7 +713,43 @@ class CLIP(nn.Module):
     def dtype(self):
         return self.visual.conv1.weight.dtype
 
-    def encode_image_and_semantic_map(self, image_pair, semantic_pair, return_hidden=False, video_frame=-1):
+    def encode_image(self, image, return_hidden=False, video_frame=2):
+        hidden = self.visual(image.type(self.dtype), video_frame=video_frame)
+        hidden = self.visual.ln_post(hidden) @ self.visual.proj
+
+        # x shape: [Batch, 2, Dim] (0: Before, 1: After olduğunu varsayıyoruz)
+        before_cls = hidden[:, 0, :]
+        after_cls = hidden[:, 50, :]
+        combined = torch.cat([before_cls, after_cls], dim=1)
+
+        # 2. Eğitilebilir katmandan geçir (Shape: [Batch, Dim])
+        x = self.change_projection(combined)
+        # x = hidden[:, 0, :]
+
+        if return_hidden:
+            return x, hidden
+
+        return x
+    
+    def encode_image_sem(self, image, return_hidden=False, video_frame=2):
+        print("video frame: "+str(video_frame))
+        hidden = self.semantic_v(image.type(self.dtype), video_frame=video_frame)
+        hidden = self.semantic_v.ln_post(hidden) @ self.visual.proj
+
+        before_cls = hidden[:, 0, :]
+        after_cls = hidden[:, 50, :]
+        combined = torch.cat([before_cls, after_cls], dim=1)
+
+        # 2. Eğitilebilir katmandan geçir (Shape: [Batch, Dim])
+        x = self.change_projection(combined)
+        # x = hidden[:, 0, :]
+
+        if return_hidden:
+            return x, hidden
+
+        return x
+
+    def encode_image_and_semantic_map(self, image_pair, semantic_pair, return_hidden=False, video_frame=2):
         image_hidden = self.visual(image_pair.type(self.dtype), video_frame=video_frame)
         image_features_pooled = self.visual.ln_post(image_hidden) @ self.visual.proj
 
@@ -722,16 +761,20 @@ class CLIP(nn.Module):
         # combined_visual_features = image_features_pooled + semantic_features_pooled
         combined_visual_features = self.visual_fusion(image_features_pooled, semantic_features_pooled)
 
+        # 4. HATA BURADAYDI: image_features_pooled yerine combined_visual_features kullanılmalı
+        # T1 ve T2 görüntülerinin CLS token'larını (Index 0 ve 50) alıp ortalamasını alıyoruz.
         x = torch.cat(
-            [image_features_pooled[:, 0, :].unsqueeze(1), image_features_pooled[:, 50, :].unsqueeze(1)], 1
+            [
+                combined_visual_features[:, 0, :].unsqueeze(1),  # T1 CLS Token (Fused)
+                combined_visual_features[:, 50, :].unsqueeze(1)  # T2 CLS Token (Fused)
+            ], 
+            1
         )
-        x = torch.mean(x, 1)
-        # x = hidden[:, 0, :]
+        x = torch.mean(x, 1) # Global Representation
 
         if return_hidden:
-            return x, image_features_pooled
-
-        return x
+            # 5. Decoder'a da FUSED özellikleri göndermeliyiz
+            return x, combined_visual_features
 
     def encode_text(self, text, return_hidden=False):
         x = self.token_embedding(text).type(
@@ -757,11 +800,16 @@ class CLIP(nn.Module):
         return x
 
     def forward(self, image, semantic_map, text):
-        image_features = self.encode_image_and_semantic_map(image, semantic_map)
+        image_features_rgb = self.encode_image(image)
+        image_features_sem = self.encode_image_sem(semantic_map)
         text_features = self.encode_text(text)
 
         # normalized features
-        image_features = image_features / image_features.norm(
+        image_features_rgb = image_features_rgb / image_features_rgb.norm(
+            dim=-1,
+            keepdim=True,
+        )
+        image_features_sem = image_features_sem / image_features_sem.norm(
             dim=-1,
             keepdim=True,
         )
@@ -771,12 +819,16 @@ class CLIP(nn.Module):
         )
 
         # cosine similarity as logits
-        logit_scale = self.logit_scale.exp()
-        logits_per_image = logit_scale * image_features @ text_features.t()
-        logits_per_text = logit_scale * text_features @ image_features.t()
+        logit_scale_text = self.logit_scale.exp()
+        logits_text_per_image = logit_scale_text * image_features_rgb @ text_features.t()
+        logits_text_per_text = logit_scale_text * text_features @ image_features_rgb.t()# cosine similarity as logits
+        
+        logit_scale_sem = self.logit_scale.exp()
+        logits_sem_per_image = logit_scale_sem * image_features_rgb @ image_features_sem.t()
+        logits_sem_per_sem = logit_scale_sem * image_features_sem @ image_features_rgb.t()
 
         # shape = [global_batch_size, global_batch_size]
-        return logits_per_image, logits_per_text
+        return logits_text_per_image, logits_text_per_text, logits_sem_per_image, logits_sem_per_sem
 
 
 def convert_weights(model: nn.Module):

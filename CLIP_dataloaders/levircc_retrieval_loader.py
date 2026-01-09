@@ -85,7 +85,7 @@ class LEVIRCC_DataLoader(Dataset):
         # self.sentence_num: used to cut the sentence representation
         # self.image_num: used to cut the image pair representation
         self.multi_sentence_per_pair = True  # !!! important tag for eval
-        if self.subset == "val" or self.subset == "test":
+        if self.subset == "val" or self.subset == "test" or self.subset == "train":
             self.sentence_num = len(self.sentences_dict)
             self.image_num = len(self.cut_off_points)
 
