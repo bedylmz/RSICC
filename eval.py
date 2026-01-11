@@ -181,46 +181,45 @@ def evaluate_transformer(
                 imgs_full = img_pairs.view(-1, c, h, w) 
                 imgs_full_clip = norm_clip(imgs_full) # CLIP için normalize et
 
-
                 # 2. Pass the flattened pairs and set frames to 2
                 # Note: Remove parentheses from .shape (it is a property, not a function)
-                clip_out = clip_encoder_image(imgs_full_clip, 2)
-                clip_out_A = clip_out[:,0,:] # 768 100 b
-                clip_out_B = clip_out[:,50,:]
-                
+                clip_out = clip_encoder_image(imgs_full_clip, 2) # 768 100 b
+                clip_out_A = clip_out[:,1:50,:] # 768 1 b
+                clip_out_B = clip_out[:,51:,:]
+
                 imgs_A_resnet = norm_resnet(imgs_A) # ResNet için normalize et
                 imgs_B_resnet = norm_resnet(imgs_B)
-
+                
                 resnet_A = encoder_image(imgs_A_resnet)
                 resnet_B = encoder_image(imgs_B_resnet)
 
-                resnet_A_adapt, clip_A_adapt = adaptLayer(resnet_A, clip_out_A)
-                resnet_B_adapt, clip_B_adapt = adaptLayer(resnet_B, clip_out_B)
-                resnet_A_normed, clip_A_normed = layerNormalizeLayer(resnet_A_adapt, clip_A_adapt)
-                resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B_adapt, clip_B_adapt)
+                resnet_A_normed, clip_A_normed = layerNormalizeLayer(resnet_A, clip_out_A)
+                resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B, clip_out_B)          
 
-                if(args.gate ==True):
+                final_A = adaptLayer(resnet_A_normed, clip_A_normed)
+                final_B = adaptLayer(resnet_B_normed, clip_B_normed)
 
-                    b, c, h, w = resnet_A_normed.shape
-                    resnet_A_flat = resnet_A_normed.permute(0, 2, 3, 1).view(b, h*w, c) 
+                # train fonksiyonu içinde (satır 194 civarı)
+                # Girdi: [Batch, 512, 14, 14]
+                if(args.gate ==True and 0 == 1):
+                    # 1. Kanalı sona alıp düzleştirin: [Batch, 196, 512]
+                    b, c, h, w = resnet_A_adapt.shape
+                    resnet_A_flat = resnet_A_adapt.permute(0, 2, 3, 1).view(b, h*w, c) 
 
-                        # 2. Attention uygulayın (Çıktı yine [Batch, 196, 512] olacak)
+                    # 2. Attention uygulayın (Çıktı yine [Batch, 196, 512] olacak)
                     resnet_A_att, _ = gateSelf(resnet_A_flat)
 
-                        # 3. Tekrar [Batch, 512, 14, 14] formatına dönün (Concat için gerekli)
-                    resnet_A_normed = resnet_A_att.view(b, h, w, c).permute(0, 3, 1, 2)
+                    # 3. Tekrar [Batch, 512, 14, 14] formatına dönün (Concat için gerekli)
+                    resnet_A_adapt = resnet_A_att.view(b, h, w, c).permute(0, 3, 1, 2)
 
-                    b, c, h, w = resnet_B_normed.shape
-                    resnet_A_flat = resnet_B_normed.permute(0, 2, 3, 1).view(b, h*w, c) 
+                    b, c, h, w = resnet_B_adapt.shape
+                    resnet_B_flat = resnet_B_adapt.permute(0, 2, 3, 1).view(b, h*w, c) 
 
-                        # 2. Attention uygulayın (Çıktı yine [Batch, 196, 512] olacak)
-                    resnet_A_att, _ = gateSelf(resnet_A_flat)
+                    # 2. Attention uygulayın (Çıktı yine [Batch, 196, 512] olacak)
+                    resnet_B_att, _ = gateSelf(resnet_B_flat)
 
-                        # 3. Tekrar [Batch, 512, 14, 14] formatına dönün (Concat için gerekli)
-                    resnet_B_normed = resnet_A_att.view(b, h, w, c).permute(0, 3, 1, 2)
-
-                final_A = torch.cat([resnet_A_normed, clip_A_normed], dim=1)
-                final_B = torch.cat([resnet_B_normed, clip_B_normed], dim=1)
+                    # 3. Tekrar [Batch, 512, 14, 14] formatına dönün (Concat için gerekli)
+                    resnet_B_adapt = resnet_B_att.view(b, h, w, c).permute(0, 3, 1, 2)
 
                 encoder_out = encoder_feat(
                     final_A,
