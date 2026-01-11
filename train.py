@@ -101,15 +101,12 @@ class CustomLayerNorm(nn.Module):
         # Çıktılar şu an 6. Adım (Concat) için hazır.
         return g_feat, c_feat
 
-
 class AdaptLayer(nn.Module):
     def __init__(self, clip_dim=768, target_dim=512, target_size=14):
         super().__init__()
         
-        # Boyutları 768'den 1024'e çıkarmak için 1x1 Convolution
-        self.projection = nn.Conv2d(clip_dim, target_dim, kernel_size=1)
         self.target_size = target_size
-        self.projection = nn.Conv2d(1792, 1024, kernel_size=1)
+        self.projection_dim = nn.Conv2d(1792, 1024, kernel_size=1)
         
         # Eğer CLIP çıktısı 7x7 ise (ViT-B/32), bunu 14x14'e büyütmek gerekebilir
         self.upsample = nn.Upsample(size=(target_size, target_size), mode='bilinear', align_corners=False)
@@ -148,7 +145,7 @@ class AdaptLayer(nn.Module):
         
         final = torch.cat([g_feat, clip_vec], dim=1)
         final = F.normalize(final, p=2, dim=1)
-        final = self.projection(final)
+        final = self.projection_dim(final)
 
         return final
 
