@@ -691,6 +691,67 @@ def validate_loss(val_loader, encoder_image, clip_encoder_image, encoder_feat, d
             
     return losses.avg
 
+def print_trainable_parameters(models_dict):
+    """
+    Verilen model sözlüğündeki eğitilen (gradient hesaplanan) parametreleri ve
+    toplam eğitilebilir parametre sayısını yazdırır.
+    
+    Kullanım:
+    models = {
+        "ResNet": encoder_image,
+        "CLIP": clip_encoder_image,
+        "MCCFormers": encoder_feat,
+        "Decoder": decoder,
+        "AdaptLayer": adaptLayer,  # Eğer tanımlıysa
+        "LayerNorm": layerNormalizeLayer, # Eğer tanımlıysa
+        "Gate": gateSelf # Eğer tanımlıysa
+    }
+    print_trainable_parameters(models)
+    """
+    print("\n" + "="*50)
+    print("EĞİTİLEN KATMANLAR VE PARAMETRE SAYILARI")
+    print("="*50)
+    
+    total_params = 0
+    
+    for model_name, model in models_dict.items():
+        if model is None:
+            continue
+            
+        print(f"\nModel: {model_name}")
+        print("-" * 20)
+        
+        model_params = 0
+        trainable_layers = set()
+        
+        for name, param in model.named_parameters():
+            if param.requires_grad:
+                # Parametre sayısını topla
+                num_params = param.numel()
+                model_params += num_params
+                
+                # Katman ismini sadeleştirip listeye ekle (örn: encoder.layer1.weight -> encoder.layer1)
+                layer_name = ".".join(name.split(".")[:-1])
+                # Detaylı yazdırmak isterseniz alttaki satırı açın:
+                # print(f"  - {name} ({num_params:,} parametre)")
+                trainable_layers.add(layer_name)
+        
+        print(f"  > Eğitilen Toplam Parametre: {model_params:,}")
+        if model_params > 0:
+            print("  > Örnek Eğitilen Katmanlar:")
+            # İlk 5 eğitilen katmanı örnek olarak yazdır
+            for i, layer in enumerate(list(trainable_layers)[:5]):
+                print(f"    * {layer}")
+            if len(trainable_layers) > 5:
+                print(f"    ... ve {len(trainable_layers) - 5} katman daha.")
+        else:
+            print("  > DİKKAT: Bu modelde eğitilen parametre yok (Tamamen dondurulmuş).")
+            
+        total_params += model_params
+
+    print("="*50)
+    print(f"TOPLAM EĞİTİLEBİLİR PARAMETRE SAYISI: {total_params:,}")
+    print("="*50 + "\n")
 
 def main(args):
     print(args)
@@ -868,6 +929,26 @@ def main(args):
         )
         
     #------------------------ TEXT ENCODER ENTEGRASYONU ----------------
+
+    # Eğitilenleri kontrol etmek için sözlük oluştur
+    check_models = {
+        "ResNet (Encoder)": encoder_image if args.fine_tune_encoder else None,
+        "CLIP (Visual)": clip_encoder_image,
+        "MCCFormers (Feat)": encoder_feat,
+        "Decoder": decoder,
+    }
+    
+    # Dual branch modülleri varsa ekle
+    if args.dual_branch:
+        check_models["AdaptLayer"] = adaptLayer
+        check_models["LayerNorm"] = layerNormalizeLayer
+        if args.gate:
+            check_models["GatedSelfAttention"] = gateSelf
+    else:
+        check_models["AdaptLayerClip"] = adaptLayerClip
+
+    # Fonksiyonu çağır
+    print_trainable_parameters(check_models)
 
 
     if(args.eval_mode == False):
