@@ -538,23 +538,6 @@ class VisualTransformer(nn.Module):
             return x, all_attn_weights
         return x
 
-
-class FeatureFusionModule(nn.Module):
-    def __init__(self, feature_dim):
-        super(FeatureFusionModule, self).__init__()
-
-        self.fusion_layer = nn.Linear(feature_dim * 2, feature_dim)
-        self.activation = nn.ReLU()
-
-    def forward(self, visual_features, semantic_features):
-
-        concatenated_features = torch.cat([visual_features, semantic_features], dim=-1)
-        fused_features = self.fusion_layer(concatenated_features)
-        fused_features = self.activation(fused_features)
-
-        return fused_features
-
-
 class CLIP(nn.Module):
     def __init__(
         self,
@@ -609,9 +592,8 @@ class CLIP(nn.Module):
             attn_mask=self.build_attention_mask,
         )
 
-        self.visual_fusion = FeatureFusionModule(embed_dim)
-        self.change_projection = nn.Linear(vision_width * 2, vision_width) # width genelde 768 veya 1024'tür
-        self.change_projection_sem = nn.Linear(vision_width * 2, vision_width) # width genelde 768 veya 1024'tür
+        self.change_projection = nn.Linear(embed_dim * 2, embed_dim) # width genelde embed_dim veya 1024'tür
+        self.change_projection_sem = nn.Linear(embed_dim * 2, embed_dim) # width genelde 768 veya 1024'tür
 
         self.vocab_size = vocab_size
         self.token_embedding = nn.Embedding(vocab_size, transformer_width)
@@ -732,7 +714,6 @@ class CLIP(nn.Module):
         return x
     
     def encode_image_sem(self, image, return_hidden=False, video_frame=2):
-        print("video frame: "+str(video_frame))
         hidden = self.semantic_v(image.type(self.dtype), video_frame=video_frame)
         hidden = self.semantic_v.ln_post(hidden) @ self.visual.proj
 
@@ -741,40 +722,13 @@ class CLIP(nn.Module):
         combined = torch.cat([before_cls, after_cls], dim=1)
 
         # 2. Eğitilebilir katmandan geçir (Shape: [Batch, Dim])
-        x = self.change_projection(combined)
+        x = self.change_projection_sem(combined)
         # x = hidden[:, 0, :]
 
         if return_hidden:
             return x, hidden
 
         return x
-
-    def encode_image_and_semantic_map(self, image_pair, semantic_pair, return_hidden=False, video_frame=2):
-        image_hidden = self.visual(image_pair.type(self.dtype), video_frame=video_frame)
-        image_features_pooled = self.visual.ln_post(image_hidden) @ self.visual.proj
-
-        semantic_hidden = self.semantic_v(semantic_pair.type(self.dtype), video_frame=video_frame)
-        semantic_features_pooled = self.semantic_v.ln_post(semantic_hidden) @ self.semantic_v.proj
-
-        # Basitce karsilikli indisleri toplayalim
-        # FIXME:
-        # combined_visual_features = image_features_pooled + semantic_features_pooled
-        combined_visual_features = self.visual_fusion(image_features_pooled, semantic_features_pooled)
-
-        # 4. HATA BURADAYDI: image_features_pooled yerine combined_visual_features kullanılmalı
-        # T1 ve T2 görüntülerinin CLS token'larını (Index 0 ve 50) alıp ortalamasını alıyoruz.
-        x = torch.cat(
-            [
-                combined_visual_features[:, 0, :].unsqueeze(1),  # T1 CLS Token (Fused)
-                combined_visual_features[:, 50, :].unsqueeze(1)  # T2 CLS Token (Fused)
-            ], 
-            1
-        )
-        x = torch.mean(x, 1) # Global Representation
-
-        if return_hidden:
-            # 5. Decoder'a da FUSED özellikleri göndermeliyiz
-            return x, combined_visual_features
 
     def encode_text(self, text, return_hidden=False):
         x = self.token_embedding(text).type(
@@ -829,35 +783,3 @@ class CLIP(nn.Module):
 
         # shape = [global_batch_size, global_batch_size]
         return logits_text_per_image, logits_text_per_text, logits_sem_per_image, logits_sem_per_sem
-
-
-def convert_weights(model: nn.Module):
-    """Convert applicable model parameters to fp16"""
-
-    def _convert_weights_to_fp16(input_module):
-        if isinstance(
-            input_module,
-            (nn.Conv1d, nn.Conv2d, nn.Conv3d, nn.Linear),
-        ):
-            input_module.weight.data = input_module.weight.data.half()
-            if input_module.bias is not None:
-                input_module.bias.data = input_module.bias.data.half()
-
-        if isinstance(input_module, nn.MultiheadAttention):
-            for attr in [
-                *[f"{s}_proj_weight" for s in ["in", "q", "k", "v"]],
-                "in_proj_bias",
-                "bias_k",
-                "bias_v",
-            ]:
-                tensor = getattr(input_module, attr)
-                if tensor is not None:
-                    tensor.data = tensor.data.half()
-
-        for name in ["text_projection", "proj"]:
-            if hasattr(input_module, name):
-                attr = getattr(input_module, name)
-                if attr is not None:
-                    attr.data = attr.data.half()
-
-    model.apply(_convert_weights_to_fp16)

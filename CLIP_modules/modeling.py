@@ -12,7 +12,7 @@ from modules.until_module import PreTrainedModel, AllGather, CrossEn
 from modules.module_cross import CrossModel, CrossConfig
 from modules.module_decoder import DecoderModel, DecoderConfig
 
-from modules.module_clip import CLIP, convert_weights
+from modules.module_clip import CLIP
 from torch.nn.utils.rnn import pad_packed_sequence, pack_padded_sequence
 
 logger = logging.getLogger(__name__)
@@ -59,15 +59,17 @@ class CLIP4IDCPreTrainedModel(PreTrainedModel, nn.Module):
 
         if state_dict is None:
             state_dict = {}
-            logger.warning("state_dict is None, the model will be initialized randomly.")
+            logger.warning("!!!!! --- State_dict is None, the model will be initialized randomly. --- !!!!!")
         pretrained_clip_name = "ViT-B/32"
         if hasattr(task_config, "pretrained_clip_name"):
+            logger.info("Pretrained CLIP name: {}".format(task_config.pretrained_clip_name))
             pretrained_clip_name = task_config.pretrained_clip_name
         clip_state_dict = CLIP.get_config(
             pretrained_clip_name=pretrained_clip_name
         )  # returns the state_dict of the pretrained model
         for key, val in clip_state_dict.items():
             new_key = "clip." + key
+            logger.info("Adding CLIP key to state_dict: {}".format(new_key))
             if new_key not in state_dict:
                 state_dict[new_key] = val.clone()
 
@@ -86,13 +88,14 @@ class CLIP4IDCPreTrainedModel(PreTrainedModel, nn.Module):
             task_config=task_config,
         )
 
-        # explain cls : class method that returns a new instance of the class cls with the same arguments that were passed to it during the call of the class method.
+        # explain cls : class method that returns a new instance of the class 
+        # cls with the same arguments that were passed to it during the call of the class method.
         model = cls(cross_config, decoder_config, clip_state_dict, *inputs, **kwargs)
         logger.info("Weights of CLIP4IDC not initialized from pretrained model: ")
 
         ## ===> Initialization trick [HARD CODE]
         if model.linear_patch == "3d":
-            logger.info("3d" * 100)
+            logger.info("Using 3D linear patch embedding initialization trick for conv2 weights...")
             contain_conv2 = False
             for key in state_dict.keys():
                 if key.find("visual.conv2.weight") > -1:
@@ -264,7 +267,6 @@ class CLIP4IDC(CLIP4IDCPreTrainedModel):
             if key in clip_state_dict:
                 del clip_state_dict[key]
 
-        convert_weights(self.clip)
         # <=== End of CLIP Encoders
 
         if self._stage_one is False and self._stage_two is True:
@@ -513,18 +515,10 @@ class CLIP4IDC(CLIP4IDCPreTrainedModel):
         if isinstance(visual_output, tuple):
             visual_output = visual_output[0]
             
-        # Aynı durum sequence_output (metin) için de geçerli olabilir, onu da garantiye alalım
         if isinstance(sequence_output, tuple):
             sequence_output = sequence_output[0]
             
         sequence_output, visual_output = sequence_output.contiguous(), visual_output.contiguous()
-
-        # we are usin single gpu, no need for allgather
-        # if self.training:
-        #     visual_output = allgather(visual_output, self.task_config)
-        #     visual_mask = allgather(visual_mask, self.task_config)
-        #     sequence_output = allgather(sequence_output, self.task_config)
-        #     torch.distributed.barrier()
 
         visual_output = visual_output.squeeze(1)
         visual_output = visual_output / visual_output.norm(dim=-1, keepdim=True)

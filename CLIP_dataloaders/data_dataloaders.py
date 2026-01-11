@@ -17,8 +17,6 @@ def dataloader_levircc_train(args, tokenizer):
         tokenizer=tokenizer,
     )
 
-    train_sampler = torch.utils.data.distributed.DistributedSampler(levircc_dataset)
-
     dataloader = DataLoader(
         levircc_dataset,
         batch_size=args.batch_size,
@@ -28,7 +26,7 @@ def dataloader_levircc_train(args, tokenizer):
         drop_last=True,
     )
 
-    return dataloader, len(levircc_dataset), train_sampler
+    return dataloader, len(levircc_dataset)
 
 
 def dataloader_levircc_test(args, tokenizer, subset="test"):
