@@ -85,7 +85,7 @@ class CustomLayerNorm(nn.Module):
     def forward(self, g_feat, c_feat):
         # Girdi Boyutları (4. Adımdan gelen): 
         # g_feat -> [Batch, 512, 14, 14]
-        # c_feat -> [Batch, 512, 14, 14]
+        # c_feat -> [Batch, 512, 196]
 
         # --- ADIM 5 UYGULAMA ---
 
@@ -97,9 +97,10 @@ class CustomLayerNorm(nn.Module):
 
         # 2. CLIP Özellikleri için LayerNorm
         # Aynı işlem CLIP kolu için
-        c_feat = c_feat.permute(0, 2, 3, 1)
+        print("C_feat shape before permute: ", c_feat.shape)
+        c_feat = c_feat.permute(0, 2, 1)
         c_feat = self.ln_clip(c_feat)
-        c_feat = c_feat.permute(0, 3, 1, 2)
+        c_feat = c_feat.permute(0, 2, 1)
 
         # Çıktılar şu an 6. Adım (Concat) için hazır.
         return g_feat, c_feat
