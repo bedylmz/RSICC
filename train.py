@@ -70,7 +70,7 @@ class CLIPVisualEncoder(nn.Module):
             param.requires_grad = False # veya True
 
 class CustomLayerNorm(nn.Module):
-    def __init__(self, common_dim=512):
+    def __init__(self, clip_dim=768, resnet_dim=1024):
         super().__init__()
         
         # --- ADIM 4 (Önceki adımın hazırlığı) ---
@@ -79,8 +79,8 @@ class CustomLayerNorm(nn.Module):
         # --- ADIM 5: Layer Norm Tanımları ---
         # LayerNorm'a sadece kanal sayısını veriyoruz (örneğin 512).
         # Bu, her pikseldeki (14x14) 512'lik vektörü kendi içinde normalize eder.
-        self.ln_resnet = nn.LayerNorm(common_dim)
-        self.ln_clip = nn.LayerNorm(common_dim)
+        self.ln_resnet = nn.LayerNorm(resnet_dim)
+        self.ln_clip = nn.LayerNorm(clip_dim)
 
     def forward(self, g_feat, c_feat):
         # Girdi Boyutları (4. Adımdan gelen): 
