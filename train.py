@@ -31,7 +31,6 @@ if torch.cuda.is_available():
 print(f"Kullanılan Random Seed: {seed}") # İleride gerekirse tekrar üretmek için loglayın
 
 import torch
-import torchvision.transforms.functional as F
 
 class BatchNormalize(torch.nn.Module):
     def __init__(self, mean, std, device):
@@ -84,8 +83,8 @@ class CustomLayerNorm(nn.Module):
 
     def forward(self, g_feat, c_feat):
         # Girdi Boyutları (4. Adımdan gelen): 
-        # g_feat -> [Batch, 512, 14, 14]
-        # c_feat -> [Batch, 512, 196]
+        # g_feat -> [Batch, 1024, 14, 14]
+        # c_feat -> [Batch, 49, 768] (Burada 49, 7x7 gridten gelmektedir)
 
         # --- ADIM 5 UYGULAMA ---
 
@@ -97,10 +96,7 @@ class CustomLayerNorm(nn.Module):
 
         # 2. CLIP Özellikleri için LayerNorm
         # Aynı işlem CLIP kolu için
-        print("C_feat shape before permute: ", c_feat.shape)
-        c_feat = c_feat.permute(0, 2, 1)
         c_feat = self.ln_clip(c_feat)
-        c_feat = c_feat.permute(0, 2, 1)
 
         # Çıktılar şu an 6. Adım (Concat) için hazır.
         return g_feat, c_feat
@@ -112,6 +108,8 @@ class AdaptLayer(nn.Module):
         
         # Boyutları 768'den 1024'e çıkarmak için 1x1 Convolution
         self.projection = nn.Conv2d(clip_dim, target_dim, kernel_size=1)
+        self.target_size = target_size
+        self.projection = nn.Conv2d(1792, 1024, kernel_size=1)
         
         # Eğer CLIP çıktısı 7x7 ise (ViT-B/32), bunu 14x14'e büyütmek gerekebilir
         self.upsample = nn.Upsample(size=(target_size, target_size), mode='bilinear', align_corners=False)
@@ -133,27 +131,26 @@ class AdaptLayer(nn.Module):
         # CLIP vektörü düz ([B, 768]) olduğu için Conv2d'ye girmeden önce
         # onu 4 boyutlu hale getirip genişletmeliyiz (3. Madde burada uygulanır).
 
-        # 1. CLS Token'ı (Baştaki token) atıyoruz. Sadece görüntü gridleri kalsın.
-        # Genelde 0. indeks CLS'dir.
-        if clip_grid.shape[1] > 1:
-            clip_grid = clip_grid[:, 1:, :]  # [Batch, 196, 768] (Eğer ViT-B/16 ise)
-        
+        # [Batch, 49, 768]
         # 2. Kare olup olmadığını kontrol edelim
-        b, seq, dim = clip_grid.shape
+        b, seq, dim = clip_vec.shape
         grid_size = int(math.sqrt(seq)) # 196 ise 14, 49 ise 7
         
         # 3. Sequence'ı Grid'e çevirme (Reshape & Permute)
         # Önce: [Batch, Dim, Seq] -> [Batch, Dim, H, W]
-        clip_grid = clip_grid.permute(0, 2, 1)  # [Batch, 768, 49]
-        clip_grid = clip_grid.view(b, dim, grid_size, grid_size) # [Batch, 768, 7, 7] (veya 7x7)
+        clip_vec = clip_vec.permute(0, 2, 1)  # [Batch, 768, 49]
+        clip_vec = clip_vec.view(b, dim, grid_size, grid_size) # [Batch, 768, 7, 7] (veya 7x7)
         
         # [Batch, 768, 14, 14]
         # 4. Eğer boyut 7x7 ise 14x14'e büyüt (ViT-B/32 kullanıyorsanız)
         if grid_size != self.target_size:
-            clip_grid = self.upsample(clip_grid)
+            clip_vec = self.upsample(clip_vec)
         
-        
-        return g_feat, clip_grid
+        final = torch.cat([g_feat, clip_vec], dim=1)
+        final = F.normalize(final, p=2, dim=1)
+        final = self.projection(final)
+
+        return final
 
 class AdaptLayerClip(nn.Module):
     def __init__(self, target_dim=1024):
@@ -350,8 +347,8 @@ def train(
             # 2. Pass the flattened pairs and set frames to 2
             # Note: Remove parentheses from .shape (it is a property, not a function)
             clip_out = clip_encoder_image(imgs_full_clip, 2) # 768 100 b
-            clip_out_A = clip_out[:,0,:] # 768 1 b
-            clip_out_B = clip_out[:,50,:]
+            clip_out_A = clip_out[:,1:50,:] # 768 1 b
+            clip_out_B = clip_out[:,51:,:]
 
             imgs_A_resnet = norm_resnet(imgs_A) # ResNet için normalize et
             imgs_B_resnet = norm_resnet(imgs_B)
@@ -359,15 +356,18 @@ def train(
             resnet_A = encoder_image(imgs_A_resnet)
             resnet_B = encoder_image(imgs_B_resnet)
 
+            print("Resnet shape: "+ str(resnet_A.shape))
+            print("Clıp shape: "+ str(clip_out_A.shape))
+
             resnet_A_normed, clip_A_normed = layerNormalizeLayer(resnet_A, clip_out_A)
             resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B, clip_out_B)          
 
-            resnet_A_adapt, clip_A_adapt = adaptLayer(resnet_A, clip_out_A)
-            resnet_B_adapt, clip_B_adapt = adaptLayer(resnet_B, clip_out_B)
+            final_A = adaptLayer(resnet_A, clip_out_A)
+            final_B = adaptLayer(resnet_B, clip_out_B)
 
             # train fonksiyonu içinde (satır 194 civarı)
             # Girdi: [Batch, 512, 14, 14]
-            if(args.gate ==True):
+            if(args.gate ==True and 0 == 1):
                 # 1. Kanalı sona alıp düzleştirin: [Batch, 196, 512]
                 b, c, h, w = resnet_A_adapt.shape
                 resnet_A_flat = resnet_A_adapt.permute(0, 2, 3, 1).view(b, h*w, c) 
@@ -386,15 +386,6 @@ def train(
 
                 # 3. Tekrar [Batch, 512, 14, 14] formatına dönün (Concat için gerekli)
                 resnet_B_adapt = resnet_B_att.view(b, h, w, c).permute(0, 3, 1, 2)
-
-            #[B, 1024+768, 14, 14]
-            final_A = torch.cat([resnet_A_adapt, clip_A_adapt], dim=1)
-            final_B = torch.cat([resnet_B_adapt, clip_B_adapt], dim=1)
-
-            final_A = F.normalize(final_A, p=2, dim=1)
-            final_B = F.normalize(final_B, p=2, dim=1)
-
-            print(final_A.shape)
 
             fused_feat = encoder_feat(
                 final_A,
