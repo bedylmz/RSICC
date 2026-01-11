@@ -1,8 +1,8 @@
 import torch
 from torch.utils.data import DataLoader
 
-from dataloaders.levircc_retrieval_loader import LEVIRCC_DataLoader
-from dataloaders.levircc_caption_loader import LEVIRCC_DataLoader as LEVIRCC_DataLoader_Caption
+from CLIP_dataloaders.levircc_retrieval_loader import LEVIRCC_DataLoader
+from CLIP_dataloaders.levircc_caption_loader import LEVIRCC_DataLoader as LEVIRCC_DataLoader_Caption
 
 
 def dataloader_levircc_train(args, tokenizer):

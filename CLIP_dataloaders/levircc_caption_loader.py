@@ -7,7 +7,7 @@ import logging
 import numpy as np
 from torch.utils.data import Dataset
 
-from dataloaders.raw_image_util import RawImageExtractor
+from CLIP_dataloaders.raw_image_util import RawImageExtractor
 
 logger = logging.getLogger(__name__)
 
