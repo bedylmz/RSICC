@@ -356,9 +356,6 @@ def train(
             resnet_A = encoder_image(imgs_A_resnet)
             resnet_B = encoder_image(imgs_B_resnet)
 
-            print("Resnet shape: "+ str(resnet_A.shape))
-            print("Clıp shape: "+ str(clip_out_A.shape))
-
             resnet_A_normed, clip_A_normed = layerNormalizeLayer(resnet_A, clip_out_A)
             resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B, clip_out_B)          
 
