@@ -111,43 +111,59 @@ class AdaptLayer(nn.Module):
         # Eğer CLIP çıktısı 7x7 ise (ViT-B/32), bunu 14x14'e büyütmek gerekebilir
         self.upsample = nn.Upsample(size=(target_size, target_size), mode='bilinear', align_corners=False)
 
+        self.gate_fc = nn.Sequential(
+            nn.Linear(hidden_dim * 3, 100), # Before + After feature concat
+            nn.ReLU(),
+            nn.Linear(100, 1),
+            nn.Sigmoid() # 0 ile 1 arası çıktı verir
+        )
 
-    def forward(self, resnet_feat, clip_vec):
+    def forward(self, resnet_feat_before, resnet_feat_after, clip_feat_before, clip_feat_after):
         """
         resnet_feat: [Batch, 2048, 14, 14]
         clip_vec:    [Batch, 768] (Henüz 1x1 veya 14x14 değil)
         """
-        
-        # --- RESNET KOLU ---
-        # ResNet zaten [B, C, H, W] formatında olduğu için doğrudan sokuyoruz.
-        # [B, 1024, 14, 14]
-        g_feat = resnet_feat 
-        
-        
-        # --- CLIP KOLU (DİKKAT) ---
-        # CLIP vektörü düz ([B, 768]) olduğu için Conv2d'ye girmeden önce
-        # onu 4 boyutlu hale getirip genişletmeliyiz (3. Madde burada uygulanır).
 
         # [Batch, 49, 768]
         # 2. Kare olup olmadığını kontrol edelim
-        b, seq, dim = clip_vec.shape
+        b, seq, dim = clip_feat_after.shape
         grid_size = int(math.sqrt(seq)) # 196 ise 14, 49 ise 7
         
         # 3. Sequence'ı Grid'e çevirme (Reshape & Permute)
         # Önce: [Batch, Dim, Seq] -> [Batch, Dim, H, W]
-        clip_vec = clip_vec.permute(0, 2, 1)  # [Batch, 768, 49]
-        clip_vec = clip_vec.view(b, dim, grid_size, grid_size) # [Batch, 768, 7, 7] (veya 7x7)
-        
+        clip_feat_after = clip_feat_after.permute(0, 2, 1)  # [Batch, 768, 49]
+        clip_feat_after = clip_feat_after.view(b, dim, grid_size, grid_size) # [Batch, 768, 7, 7] (veya 7x7)
+        clip_feat_before = clip_feat_before.permute(0, 2, 1)  # [Batch, 768, 49]
+        clip_feat_before = clip_feat_before.view(b, dim, grid_size, grid_size) # [Batch, 768, 7, 7] (veya 7x7)
+
         # [Batch, 768, 14, 14]
         # 4. Eğer boyut 7x7 ise 14x14'e büyüt (ViT-B/32 kullanıyorsanız)
         if grid_size != self.target_size:
-            clip_vec = self.upsample(clip_vec)
-        
-        final = torch.cat([g_feat, clip_vec], dim=1)
-        final = F.normalize(final, p=2, dim=1)
-        final = self.projection_dim(final)
+            clip_feat_before = self.upsample(clip_feat_before)
+            clip_feat_after = self.upsample(clip_feat_after)
 
-        return final
+        resnet_diff = torch.abs(resnet_feat_before - resnet_feat_after)
+
+        # 3. GATE Mekanizması: Ne kadar değişim var?
+        # ResNet fark vektörüne bakarak bir "alpha" katsayısı üret
+        alpha = self.gate_fc(torch.cat([resnet_feat_before, resnet_feat_after, resnet_diff], dim=1))
+        # alpha output: [Batch, 1] -> Her görüntü için 0 (değişim yok) ile 1 (değişim var) arası.
+        
+        resnet_feat_before = (1-alpha) * resnet_feat_before
+        resnet_feat_after = (1-alpha) * resnet_feat_after
+        clip_feat_before = alpha * clip_feat_before
+        clip_feat_after = alpha * clip_feat_after
+
+        final_before = torch.cat([resnet_feat_before, clip_feat_before], dim=1)
+        final_after = torch.cat([resnet_feat_after, clip_feat_after], dim=1)
+
+        final_before = F.normalize(final_before, p=2, dim=1)
+        final_after = F.normalize(final_after, p=2, dim=1)
+
+        final_before = self.projection_dim(final_before)
+        final_before = self.projection_dim(final_after)
+
+        return final_before, final_after
 
 class AdaptLayerClip(nn.Module):
     def __init__(self, target_dim=1024):
@@ -357,9 +373,8 @@ def train(
             resnet_A_normed, clip_A_normed = layerNormalizeLayer(resnet_A, clip_out_A)
             resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B, clip_out_B)          
 
-            final_A = adaptLayer(resnet_A_normed, clip_A_normed)
-            final_B = adaptLayer(resnet_B_normed, clip_B_normed)
-
+            final_A, final_B = adaptLayer(resnet_A_normed, clip_A_normed,resnet_B_normed, clip_B_normed)
+            
             # train fonksiyonu içinde (satır 194 civarı)
             # Girdi: [Batch, 512, 14, 14]
             if(args.gate ==True and 0 == 1):
@@ -1272,8 +1287,6 @@ if __name__ == "__main__":
 
     #params for text encoder
     parser.add_argument("--clip_text_encoder", action='store_true')
-    parser.add_argument("--clip_version", type=str, default="Vit32")
-
 
     # Training parameters
     parser.add_argument("--epochs", type=int, default=40, help="number of epochs to train for (if early stopping is not triggered).")
