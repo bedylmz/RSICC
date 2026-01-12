@@ -197,7 +197,7 @@ def evaluate_transformer(
                 resnet_A_normed, clip_A_normed = layerNormalizeLayer(resnet_A, clip_out_A)
                 resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B, clip_out_B)          
 
-                final_A, final_B = adaptLayer(resnet_A_normed, clip_A_normed,resnet_B_normed, clip_B_normed)
+                final_A, final_B = adaptLayer(resnet_A_normed, resnet_B_normed, clip_A_normed, clip_B_normed)
 
                 # train fonksiyonu içinde (satır 194 civarı)
                 # Girdi: [Batch, 512, 14, 14]
