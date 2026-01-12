@@ -142,12 +142,21 @@ class AdaptLayer(nn.Module):
             clip_feat_before = self.upsample(clip_feat_before)
             clip_feat_after = self.upsample(clip_feat_after)
 
-        resnet_diff = torch.abs(resnet_feat_before - resnet_feat_after)
+        res_pool_before = resnet_feat_before.mean([2, 3]) # [Batch, 1024]
+        res_pool_after = resnet_feat_after.mean([2, 3])   # [Batch, 1024]
+        
+        # Fark vektörü (Pooling sonrası hesaplanmalı)
+        res_diff_vec = torch.abs(res_pool_before - res_pool_after)
+
+        # Gate'e düzleşmiş vektörleri veriyoruz
+        gate_input = torch.cat([res_pool_before, res_pool_after, res_diff_vec], dim=1) # [Batch, 3072]
 
         # 3. GATE Mekanizması: Ne kadar değişim var?
         # ResNet fark vektörüne bakarak bir "alpha" katsayısı üret
-        alpha = self.gate_fc(torch.cat([resnet_feat_before, resnet_feat_after, resnet_diff], dim=1))
+        alpha = self.gate_fc(gate_input)
         # alpha output: [Batch, 1] -> Her görüntü için 0 (değişim yok) ile 1 (değişim var) arası.
+
+        alpha = alpha.view(b, 1, 1, 1)
         
         resnet_feat_before = (1-alpha) * resnet_feat_before
         resnet_feat_after = (1-alpha) * resnet_feat_after
@@ -161,7 +170,7 @@ class AdaptLayer(nn.Module):
         final_after = F.normalize(final_after, p=2, dim=1)
 
         final_before = self.projection_dim(final_before)
-        final_before = self.projection_dim(final_after)
+        final_after = self.projection_dim(final_after)
 
         return final_before, final_after
 
@@ -373,7 +382,7 @@ def train(
             resnet_A_normed, clip_A_normed = layerNormalizeLayer(resnet_A, clip_out_A)
             resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B, clip_out_B)          
 
-            final_A, final_B = adaptLayer(resnet_A_normed, clip_A_normed,resnet_B_normed, clip_B_normed)
+            final_A, final_B = adaptLayer(resnet_A_normed, resnet_B_normed, clip_A_normed, clip_B_normed)
 
             # train fonksiyonu içinde (satır 194 civarı)
             # Girdi: [Batch, 512, 14, 14]
