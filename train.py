@@ -102,7 +102,7 @@ class CustomLayerNorm(nn.Module):
         return g_feat, c_feat
 
 class AdaptLayer(nn.Module):
-    def __init__(self, clip_dim=768, target_dim=512, target_size=14):
+    def __init__(self, clip_dim=768, resnet_dim=1024, target_size=14):
         super().__init__()
         
         self.target_size = target_size
@@ -112,7 +112,7 @@ class AdaptLayer(nn.Module):
         self.upsample = nn.Upsample(size=(target_size, target_size), mode='bilinear', align_corners=False)
 
         self.gate_fc = nn.Sequential(
-            nn.Linear(hidden_dim * 3, 100), # Before + After feature concat
+            nn.Linear(resnet_dim * 3, 100), # Before + After feature concat
             nn.ReLU(),
             nn.Linear(100, 1),
             nn.Sigmoid() # 0 ile 1 arası çıktı verir
@@ -374,7 +374,7 @@ def train(
             resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B, clip_out_B)          
 
             final_A, final_B = adaptLayer(resnet_A_normed, clip_A_normed,resnet_B_normed, clip_B_normed)
-            
+
             # train fonksiyonu içinde (satır 194 civarı)
             # Girdi: [Batch, 512, 14, 14]
             if(args.gate ==True and 0 == 1):
