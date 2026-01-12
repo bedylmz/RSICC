@@ -344,8 +344,9 @@ def train(
             # 2. Pass the flattened pairs and set frames to 2
             # Note: Remove parentheses from .shape (it is a property, not a function)
             clip_out = clip_encoder_image(imgs_full_clip, 2) # 768 100 b
-            clip_out_A = clip_out[:,1:50,:] # 768 1 b
-            clip_out_B = clip_out[:,51:,:]
+            size = clip_out.size(1)//2
+            clip_out_A = clip_out[:,1:size,:] # 768 1 b
+            clip_out_B = clip_out[:,size+1:,:]
 
             imgs_A_resnet = norm_resnet(imgs_A) # ResNet için normalize et
             imgs_B_resnet = norm_resnet(imgs_B)
@@ -393,8 +394,9 @@ def train(
             # 2. Pass the flattened pairs and set frames to 2
             # Note: Remove parentheses from .shape (it is a property, not a function)
             clip_out = clip_encoder_image(imgs_full_clip, 2)
-            clip_out_A = clip_out[:,0,:] # 768 100 b
-            clip_out_B = clip_out[:,50,:]
+            size = clip_out.size(1)//2
+            clip_out_A = clip_out[:,1:size,:] # 768 1 b
+            clip_out_B = clip_out[:,size+1:,:]
 
             clip_out_A = adaptLayerClip(clip_out_A)
             clip_out_B = adaptLayerClip(clip_out_B)
@@ -1270,6 +1272,8 @@ if __name__ == "__main__":
 
     #params for text encoder
     parser.add_argument("--clip_text_encoder", action='store_true')
+    parser.add_argument("--clip_version", type=str, default="Vit32")
+
 
     # Training parameters
     parser.add_argument("--epochs", type=int, default=40, help="number of epochs to train for (if early stopping is not triggered).")
