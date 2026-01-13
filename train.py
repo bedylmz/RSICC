@@ -1224,6 +1224,7 @@ def main(args):
                         layerNormalizeLayer=layerNormalizeLayer,
                         adaptLayer=adaptLayer,
                         gateSelf= gateSelf,
+                        logger=logger,
                         )
               else:
                    metrics = evaluate_transformer(
@@ -1234,6 +1235,7 @@ def main(args):
                         decoder=decoder,
                         layerNormalizeLayer=layerNormalizeLayer,
                         adaptLayer=adaptLayer,
+                        logger=logger,
                         )
         elif(args.eval_just_RSICC):
             metrics = evaluate_transformer(
@@ -1241,6 +1243,7 @@ def main(args):
                         encoder_image=encoder_image, 
                         encoder_feat=encoder_feat,
                         decoder=decoder,
+                        logger=logger,
                         )
         else:
               metrics = evaluate_transformer(
@@ -1248,7 +1251,8 @@ def main(args):
                     clip_encoder_image=clip_encoder_image, 
                     encoder_feat=encoder_feat,
                     decoder=decoder,
-                    adaptLayerClip=adaptLayerClip)
+                    adaptLayerClip=adaptLayerClip,
+                    logger=logger)
 
 if __name__ == "__main__":
     folder_path = ""
