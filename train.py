@@ -976,7 +976,8 @@ def main(args):
             rsicc_decoder=decoder, 
             clip_model=clip_model_ref, 
             clip_tokenizer=clip_tokenizer, 
-            rsicc_word_map=word_map
+            rsicc_word_map=word_map,
+            logger=logger
         )
         
     #------------------------ TEXT ENCODER ENTEGRASYONU ----------------
@@ -1162,7 +1163,7 @@ def main(args):
                 logger.info(f"Early stopping triggered! Validation metrics hasn't increased for {args.stop_criteria} epochs.")
                 break
             if epochs_since_improvement > 0 and epochs_since_improvement % 3 == 0:
-                adjust_learning_rate(decoder_optimizer, 0.7)
+                adjust_learning_rate(decoder_optimizer, 0.7, logger)
 
     # ---------------------------- EVAL SECTION ----------------------------
     else:
@@ -1218,7 +1219,8 @@ def main(args):
                 rsicc_decoder=decoder, 
                 clip_model=clip_model_ref, 
                 clip_tokenizer=clip_tokenizer, 
-                rsicc_word_map=word_map
+                rsicc_word_map=word_map,
+                logger=logger
             )
         #------------------------ TEXT ENCODER ENTEGRASYONU ----------------
 

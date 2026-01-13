@@ -223,7 +223,7 @@ def init_embedding(embeddings):
     bias = np.sqrt(3.0 / embeddings.size(1))
     torch.nn.init.uniform_(embeddings, -bias, bias)
 
-def load_embeddings(emb_file, word_map):
+def load_embeddings(emb_file, word_map, logger):
     """
     Creates an embedding tensor for the specified word map, for loading into the model.
 
@@ -243,7 +243,7 @@ def load_embeddings(emb_file, word_map):
     init_embedding(embeddings)
 
     # Read embedding file
-    print("\nLoading embeddings...")
+    logger.info("\nLoading embeddings...")
     for line in open(emb_file, 'r'):
         line = line.split(' ')
 
@@ -290,7 +290,7 @@ class AverageMeter(object):
         self.count += n
         self.avg = self.sum / self.count
 
-def adjust_learning_rate(optimizer, shrink_factor):
+def adjust_learning_rate(optimizer, shrink_factor, logger):
     """
     Shrinks learning rate by a specified factor.
 
@@ -298,10 +298,10 @@ def adjust_learning_rate(optimizer, shrink_factor):
     :param shrink_factor: factor in interval (0, 1) to multiply learning rate with.
     """
 
-    print("\nDECAYING learning rate.")
+    logger.info("\nDECAYING learning rate.")
     for param_group in optimizer.param_groups:
         param_group['lr'] = param_group['lr'] * shrink_factor
-    print("The new learning rate is %f\n" % (optimizer.param_groups[0]['lr'],))
+    logger.info("The new learning rate is %f\n" % (optimizer.param_groups[0]['lr'],))
 
 def accuracy(scores, targets, k):
     """
@@ -319,7 +319,7 @@ def accuracy(scores, targets, k):
     correct_total = correct.view(-1).float().sum()  # 0D tensor
     return correct_total.item() * (100.0 / batch_size)
 
-def get_eval_score(references, hypotheses):
+def get_eval_score(references, hypotheses, logger):
     scorers = [
         (Bleu(4), ["Bleu_1", "Bleu_2", "Bleu_3", "Bleu_4"]),
         (Meteor(), "METEOR"),
@@ -337,27 +337,27 @@ def get_eval_score(references, hypotheses):
         score_i, scores_i = scorer.compute_score(ref, hypo)
         score.extend(score_i) if isinstance(score_i, list) else score.append(score_i)
         method.extend(method_i) if isinstance(method_i, list) else method.append(method_i)
-        print("{} {}".format(method_i, score_i))
+        logger.info(f"{method_i} {score_i}")
     score_dict = dict(zip(method, score))
 
     return score_dict
 
-def convert2words(sequences, rev_word_map):
+def convert2words(sequences, rev_word_map, logger):
     for l1 in sequences:
         caption = ""
         for l2 in l1:
             caption += rev_word_map[l2]
             caption += " "
-        print(caption)
+        logger.info(caption)
 
 #---------------------------CUSTOM TOKENİZER-------------------------------------------
 
-def bridge_embeddings_and_transfer(rsicc_decoder, clip_model, clip_tokenizer, rsicc_word_map):
+def bridge_embeddings_and_transfer(rsicc_decoder, clip_model, clip_tokenizer, rsicc_word_map, logger):
     """
     RSICC'nin Word-Level kelime haritası ile CLIP'in BPE vektörleri arasında köprü kurar.
     Dimension mismatch (512 vs 1024) durumunda vektörleri tekrarlayarak transfer eder.
     """
-    print(f">>> CLIP ve RSICC Tokenizer Köprüsü Kuruluyor...")
+    logger.info(f">>> CLIP ve RSICC Tokenizer Köprüsü Kuruluyor...")
     
     # 1. Hedef ve Kaynak Embedding Matrisleri
     rsicc_emb_layer = rsicc_decoder.vocab_embedding
@@ -398,7 +398,7 @@ def bridge_embeddings_and_transfer(rsicc_decoder, clip_model, clip_tokenizer, rs
                          avg_vector = torch.cat([avg_vector, avg_vector], dim=0)
                     else:
                         # Eğer başka bir boyut farkı varsa atla ve uyar
-                        # print(f"Skip: {word} dim mismatch {avg_vector.shape} vs {embed_dim}")
+                        # logger.info(f"Skip: {word} dim mismatch {avg_vector.shape} vs {embed_dim}")
                         continue
                 
                 # Kopyala
@@ -406,12 +406,12 @@ def bridge_embeddings_and_transfer(rsicc_decoder, clip_model, clip_tokenizer, rs
                     rsicc_emb_layer.weight[rsicc_id].copy_(avg_vector)
                     found_count += 1
 
-    print(f">>> Embedding Transfer Tamamlandı: {found_count}/{total_count} kelime CLIP'ten aktarıldı.")
+    logger.info(f">>> Embedding Transfer Tamamlandı: {found_count}/{total_count} kelime CLIP'ten aktarıldı.")
 
     # ---------------------------------------------------------
     # 2. Transformer Katmanlarını Transfer Et
     # ---------------------------------------------------------
-    print(">>> Transformer Katmanları Kontrol Ediliyor...")
+    logger.info(">>> Transformer Katmanları Kontrol Ediliyor...")
     clip_layers = clip_model.transformer.resblocks
     decoder_layers = rsicc_decoder.transformer.layers 
     
@@ -446,7 +446,7 @@ def bridge_embeddings_and_transfer(rsicc_decoder, clip_model, clip_tokenizer, rs
             transferred_layers += 1
             
     if transferred_layers == 0:
-        print(f">>> UYARI: Boyut farkı (512 vs {embed_dim}) nedeniyle Transformer katmanları transfer EDİLEMEDİ.")
-        print(">>> Sadece Embedding katmanı (çoğaltılarak) transfer edildi, model sıfırdan öğrenecek.")
+        logger.info(f">>> UYARI: Boyut farkı (512 vs {embed_dim}) nedeniyle Transformer katmanları transfer EDİLEMEDİ.")
+        logger.info(">>> Sadece Embedding katmanı (çoğaltılarak) transfer edildi, model sıfırdan öğrenecek.")
     else:
-        print(f">>> {transferred_layers} Transformer katmanı başarıyla transfer edildi.")
+        logger.info(f">>> {transferred_layers} Transformer katmanı başarıyla transfer edildi.")

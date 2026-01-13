@@ -394,14 +394,14 @@ def evaluate_transformer(
     # Calculate BLEU1~4, METEOR, ROUGE_L, CIDEr scores
     if len(nochange_references)>0:
         logger.info('nochange_metric:')
-        nochange_metric = get_eval_score(nochange_references, nochange_hypotheses)
+        nochange_metric = get_eval_score(nochange_references, nochange_hypotheses, logger)
         logger.info(f"nochange_acc: {nochange_acc / len(nochange_references)}")
     if len(change_references)>0:
         logger.info('change_metric:')
-        change_metric = get_eval_score(change_references, change_hypotheses)
+        change_metric = get_eval_score(change_references, change_hypotheses, logger)
         logger.info(f"change_acc: {change_acc / len(change_references)}")
     logger.info(".......................................................")
-    metrics = get_eval_score(references, hypotheses)
+    metrics = get_eval_score(references, hypotheses, logger)
 
 
     return metrics
