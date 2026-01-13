@@ -802,6 +802,8 @@ def main(args):
     global logger 
     logger = get_logger(os.path.join(args.save_model_path, "log.txt"))
     logger.info(f"Kullanılan Random Seed: {seed}") # İleride gerekirse tekrar üretmek için
+    if args.eval_mode:
+        logger.disabled = True
 
     logger.info(args)
     global metrics_list
@@ -809,9 +811,6 @@ def main(args):
     start_epoch = 0
     best_bleu4 = 0.0  # BLEU-4 score right now
     epochs_since_improvement = 0  # keeps track of number of epochs since there's been an improvement in validation BLEU
-    
-    if args.eval_mode:
-        logger.disabled = True
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # sets device for model and PyTorch tensors
 

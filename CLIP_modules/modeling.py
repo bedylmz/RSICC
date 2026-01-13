@@ -15,7 +15,6 @@ from CLIP_modules.module_decoder import DecoderModel, DecoderConfig
 from CLIP_modules.module_clip import CLIP
 from torch.nn.utils.rnn import pad_packed_sequence, pack_padded_sequence
 
-logger = logging.getLogger(__name__)
 # allgather = AllGather.apply
 
 
