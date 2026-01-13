@@ -810,9 +810,10 @@ def main(args):
     best_bleu4 = 0.0  # BLEU-4 score right now
     epochs_since_improvement = 0  # keeps track of number of epochs since there's been an improvement in validation BLEU
     
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # sets device for model and PyTorch tensors
+    if(args.eval_mode == False):
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # sets device for model and PyTorch tensors
 
-    logger.info(f"CUDA available: {torch.cuda.is_available()}")
+        logger.info(f"CUDA available: {torch.cuda.is_available()}")
 
     cudnn.benchmark = (
         True  # set to true only if inputs to model are fixed size; otherwise lot of computational overhead
@@ -928,18 +929,19 @@ def main(args):
     encoder_feat = encoder_feat.to(device)
     decoder = decoder.to(device)
 
-    logger.info("Checkpoint_savepath:{}".format(args.savepath))
-    logger.info(
-        "Encoder_image_mode:{}   Encoder_feat_mode:{}   Decoder_mode:{}".format(
-            args.encoder_image_model, args.encoder_feat, args.decoder
+    if(args.eval_mode == False):
+        logger.info("Checkpoint_savepath:{}".format(args.savepath))
+        logger.info(
+            "Encoder_image_mode:{}   Encoder_feat_mode:{}   Decoder_mode:{}".format(
+                args.encoder_image_model, args.encoder_feat, args.decoder
+            )
         )
-    )
-    logger.info(
-        "encoder_layers {} decoder_layers {} n_heads {} dropout {} encoder_lr {} "
-        "decoder_lr {}".format(
-            args.n_layers, args.decoder_n_layers, args.n_heads, args.dropout, args.encoder_lr, args.decoder_lr
+        logger.info(
+            "encoder_layers {} decoder_layers {} n_heads {} dropout {} encoder_lr {} "
+            "decoder_lr {}".format(
+                args.n_layers, args.decoder_n_layers, args.n_heads, args.dropout, args.encoder_lr, args.decoder_lr
+            )
         )
-    )
 
     # Loss function
     criterion = nn.CrossEntropyLoss(ignore_index=0).to(device)
@@ -1002,8 +1004,6 @@ def main(args):
     if(args.eval_mode == False):
         # Epochs
         for epoch in range(start_epoch, args.epochs):
-
-            logger.info(time.strftime("%m-%d  %H : %M : %S", time.localtime(time.time())))
             
             if (args.dual_branch == True):
                 if(args.gate ==True):
@@ -1170,30 +1170,39 @@ def main(args):
         
         if 'encoder_image' in checkpoint:
             encoder_image.load_state_dict(checkpoint['encoder_image'])
+            logger.info("Loaded 'encoder_image' weights from checkpoint.")
         
         if 'encoder_feat' in checkpoint:
             encoder_feat.load_state_dict(checkpoint['encoder_feat'])
+            logger.info("Loaded 'encoder_feat' weights from checkpoint.")
             
         if 'decoder' in checkpoint:
             decoder.load_state_dict(checkpoint['decoder'])
+            logger.info("Loaded 'decoder' weights from checkpoint.")
         
         if 'layerNormalizeLayer' in checkpoint:
             layerNormalizeLayer.load_state_dict(checkpoint['layerNormalizeLayer'])
+            logger.info("Loaded 'layerNormalizeLayer' weights from checkpoint.")
 
         if 'adaptLayer' in checkpoint:
             adaptLayer.load_state_dict(checkpoint['adaptLayer'])
+            logger.info("Loaded 'adaptLayer' weights from checkpoint.")
         
         if 'adaptLayerClip' in checkpoint:
             adaptLayerClip.load_state_dict(checkpoint['adaptLayerClip'])
+            logger.info("Loaded 'adaptLayerClip' weights from checkpoint.")
 
         if 'gateSelf' in checkpoint:
             gateSelf.load_state_dict(checkpoint['gateSelf'])
+            logger.info("Loaded 'gateSelf' weights from checkpoint.")
 
         # Check for CLIP specifically
         if 'clip_encoder_image' in checkpoint:
             clip_encoder_image.load_state_dict(checkpoint['clip_encoder_image'])
+            logger.info("Loaded 'clip_encoder_image' weights from checkpoint.")
         else:
-            logger.info("WARNING: 'clip_encoder_image' weights not found in checkpoint. Using initialized weights.")
+            logger.warning("!!!!!!!!!!!!!!!!!     WARNING        !!!!!!!!!!!!!!!!!")
+            logger.warning("No 'clip_encoder_image' weights found in checkpoint.")
 
         #------------------------ TEXT ENCODER ENTEGRASYONU ----------------
         if(args.clip_text_encoder):
