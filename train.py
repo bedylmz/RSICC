@@ -747,7 +747,7 @@ def print_trainable_parameters(models_dict):
         if model is None:
             continue
             
-        logger.info(f"\nModel: {model_name}")
+        logger.info(f"Model: {model_name}")
         logger.info("-" * 20)
         
         model_params = 0
@@ -801,12 +801,10 @@ def get_logger(filename=None):
 def main(args):
     global logger 
     logger = get_logger(os.path.join(args.save_model_path, "log.txt"))
-    logger.info(f"Kullanılan Random Seed: {seed}") # İleride gerekirse tekrar üretmek için loglayın
-
+    logger.info(f"Kullanılan Random Seed: {seed}") # İleride gerekirse tekrar üretmek için
 
     logger.info(args)
     global metrics_list
-    logger.info(time.strftime("%m-%d  %H : %M : %S", time.localtime(time.time())))
 
     start_epoch = 0
     best_bleu4 = 0.0  # BLEU-4 score right now
@@ -820,7 +818,7 @@ def main(args):
         True  # set to true only if inputs to model are fixed size; otherwise lot of computational overhead
     )
 
-    logger.info("*"*20 ,device,"*"*20)
+    logger.info(device)
     # Read word map
     word_map_file = os.path.join(args.data_folder, "WORDMAP_" + args.data_name + ".json")
     with open(word_map_file, "r") as j:
@@ -1107,7 +1105,7 @@ def main(args):
             best_bleu4 = max(recent_bleu4, best_bleu4)
             if not is_best:
                 epochs_since_improvement += 1
-                logger.info("\nEpochs since last improvement: %d\n" % (epochs_since_improvement,))
+                logger.info(" Epochs since last improvement: %d\n" % (epochs_since_improvement,))
             else:
                 epochs_since_improvement = 0
             if is_best:
