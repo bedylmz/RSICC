@@ -810,11 +810,13 @@ def main(args):
     best_bleu4 = 0.0  # BLEU-4 score right now
     epochs_since_improvement = 0  # keeps track of number of epochs since there's been an improvement in validation BLEU
     
-    if(args.eval_mode == False):
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # sets device for model and PyTorch tensors
+    if args.eval_mode:
+        logger.disabled = True
+    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # sets device for model and PyTorch tensors
 
-        logger.info(f"CUDA available: {torch.cuda.is_available()}")
-        logger.info(device)
+    logger.info(f"CUDA available: {torch.cuda.is_available()}")
+    logger.info(device)
 
     cudnn.benchmark = (
         True  # set to true only if inputs to model are fixed size; otherwise lot of computational overhead
@@ -928,20 +930,19 @@ def main(args):
         encoder_image = encoder_image.to(device)
     encoder_feat = encoder_feat.to(device)
     decoder = decoder.to(device)
-
-    if(args.eval_mode == False):
-        logger.info("Checkpoint_savepath:{}".format(args.savepath))
-        logger.info(
-            "Encoder_image_mode:{}   Encoder_feat_mode:{}   Decoder_mode:{}".format(
-                args.encoder_image_model, args.encoder_feat, args.decoder
-            )
+    
+    logger.info("Checkpoint_savepath:{}".format(args.savepath))
+    logger.info(
+        "Encoder_image_mode:{}   Encoder_feat_mode:{}   Decoder_mode:{}".format(
+            args.encoder_image_model, args.encoder_feat, args.decoder
         )
-        logger.info(
-            "encoder_layers {} decoder_layers {} n_heads {} dropout {} encoder_lr {} "
-            "decoder_lr {}".format(
-                args.n_layers, args.decoder_n_layers, args.n_heads, args.dropout, args.encoder_lr, args.decoder_lr
-            )
+    )
+    logger.info(
+        "encoder_layers {} decoder_layers {} n_heads {} dropout {} encoder_lr {} "
+        "decoder_lr {}".format(
+            args.n_layers, args.decoder_n_layers, args.n_heads, args.dropout, args.encoder_lr, args.decoder_lr
         )
+    )
 
     # Loss function
     criterion = nn.CrossEntropyLoss(ignore_index=0).to(device)
@@ -1165,6 +1166,7 @@ def main(args):
 
     # ---------------------------- EVAL SECTION ----------------------------
     else:
+        logger.disabled = False
         logger.info(f"Loading checkpoint from {args.checkpoint_path}")
         checkpoint = torch.load(args.checkpoint_path, map_location=str(device))
         
