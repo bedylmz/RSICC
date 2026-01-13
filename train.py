@@ -800,7 +800,7 @@ def get_logger(filename=None):
 
 def main(args):
     global logger 
-    logger = get_logger(os.path.join(args.output_dir, "log.txt"))
+    logger = get_logger(os.path.join(args.save_model_path, "log.txt"))
     logger.info(f"Kullanılan Random Seed: {seed}") # İleride gerekirse tekrar üretmek için loglayın
 
 
