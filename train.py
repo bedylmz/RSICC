@@ -803,7 +803,7 @@ def main(args):
     logger = get_logger(os.path.join(args.save_model_path, "log.txt"))
     logger.info(f"Kullanılan Random Seed: {seed}") # İleride gerekirse tekrar üretmek için
     if args.eval_mode:
-        logger.disabled = True
+        logging.disable(logging.CRITICAL)
 
     logger.info(args)
     global metrics_list
@@ -1165,7 +1165,7 @@ def main(args):
 
     # ---------------------------- EVAL SECTION ----------------------------
     else:
-        logger.disabled = False
+        logging.disable(logging.NOTSET)
         logger.info(f"Loading checkpoint from {args.checkpoint_path}")
         checkpoint = torch.load(args.checkpoint_path, map_location=str(device))
         
