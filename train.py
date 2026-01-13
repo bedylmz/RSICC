@@ -116,7 +116,7 @@ class AdaptLayer(nn.Module):
             nn.Sigmoid() # 0 ile 1 arası çıktı verir
         )
 
-    def forward(self, resnet_feat_before, resnet_feat_after, clip_feat_before, clip_feat_after):
+    def forward(self, resnet_feat_before, resnet_feat_after, clip_feat_before, clip_feat_after, soft=True):
         """
         resnet_feat: [Batch, 2048, 14, 14]
         clip_vec:    [Batch, 768] (Henüz 1x1 veya 14x14 değil)
@@ -140,26 +140,27 @@ class AdaptLayer(nn.Module):
             clip_feat_before = self.upsample(clip_feat_before)
             clip_feat_after = self.upsample(clip_feat_after)
 
-        res_pool_before = resnet_feat_before.mean([2, 3]) # [Batch, 1024]
-        res_pool_after = resnet_feat_after.mean([2, 3])   # [Batch, 1024]
-        
-        # Fark vektörü (Pooling sonrası hesaplanmalı)
-        res_diff_vec = torch.abs(res_pool_before - res_pool_after)
+        if soft:
+            res_pool_before = resnet_feat_before.mean([2, 3]) # [Batch, 1024]
+            res_pool_after = resnet_feat_after.mean([2, 3])   # [Batch, 1024]
+            
+            # Fark vektörü (Pooling sonrası hesaplanmalı)
+            res_diff_vec = torch.abs(res_pool_before - res_pool_after)
 
-        # Gate'e düzleşmiş vektörleri veriyoruz
-        gate_input = torch.cat([res_pool_before, res_pool_after, res_diff_vec], dim=1) # [Batch, 3072]
+            # Gate'e düzleşmiş vektörleri veriyoruz
+            gate_input = torch.cat([res_pool_before, res_pool_after, res_diff_vec], dim=1) # [Batch, 3072]
 
-        # 3. GATE Mekanizması: Ne kadar değişim var?
-        # ResNet fark vektörüne bakarak bir "alpha" katsayısı üret
-        alpha = self.gate_fc(gate_input)
-        # alpha output: [Batch, 1] -> Her görüntü için 0 (değişim yok) ile 1 (değişim var) arası.
+            # 3. GATE Mekanizması: Ne kadar değişim var?
+            # ResNet fark vektörüne bakarak bir "alpha" katsayısı üret
+            alpha = self.gate_fc(gate_input)
+            # alpha output: [Batch, 1] -> Her görüntü için 0 (değişim yok) ile 1 (değişim var) arası.
 
-        alpha = alpha.view(b, 1, 1, 1)
-        
-        resnet_feat_before = (1-alpha) * resnet_feat_before
-        resnet_feat_after = (1-alpha) * resnet_feat_after
-        clip_feat_before = alpha * clip_feat_before
-        clip_feat_after = alpha * clip_feat_after
+            alpha = alpha.view(b, 1, 1, 1)
+            
+            resnet_feat_before = (1-alpha) * resnet_feat_before
+            resnet_feat_after = (1-alpha) * resnet_feat_after
+            clip_feat_before = alpha * clip_feat_before
+            clip_feat_after = alpha * clip_feat_after
 
         final_before = torch.cat([resnet_feat_before, clip_feat_before], dim=1)
         final_after = torch.cat([resnet_feat_after, clip_feat_after], dim=1)
@@ -381,7 +382,7 @@ def train(
             resnet_A_normed, clip_A_normed = layerNormalizeLayer(resnet_A, clip_out_A)
             resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B, clip_out_B)          
 
-            final_A, final_B = adaptLayer(resnet_A_normed, resnet_B_normed, clip_A_normed, clip_B_normed)
+            final_A, final_B = adaptLayer(resnet_A_normed, resnet_B_normed, clip_A_normed, clip_B_normed, soft=args.soft)
 
             # train fonksiyonu içinde (satır 194 civarı)
             # Girdi: [Batch, 512, 14, 14]
@@ -1289,6 +1290,9 @@ if __name__ == "__main__":
     parser.add_argument("--do_pretrain", action="store_true", help="Whether to run training.")
     parser.add_argument("--do_train", action="store_true", help="Whether to run training.")
     parser.add_argument("--dataloader_type", type=str, default="test")
+
+    parser.add_argument("--soft", action="store_true")
+
 
     parser.add_argument("--lr", type=float, default=0.0001, help="initial learning rate")
     parser.add_argument("--lr_decay", type=float, default=0.9, help="Learning rate exp epoch decay")
