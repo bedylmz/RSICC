@@ -28,7 +28,7 @@ torch.manual_seed(seed)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(seed)
 
-print(f"Kullanılan Random Seed: {seed}") # İleride gerekirse tekrar üretmek için loglayın
+logger.info(f"Kullanılan Random Seed: {seed}") # İleride gerekirse tekrar üretmek için loglayın
 
 import torch
 
@@ -493,8 +493,8 @@ def train(
 
         start = time.time()
         if i % args.print_freq == 0:
-            # print('TIME: ', time.strftime("%m-%d  %H : %M : %S", time.localtime(time.time())))
-            print(
+            # logger.info('TIME: ', time.strftime("%m-%d  %H : %M : %S", time.localtime(time.time())))
+            logger.info(
                 "Epoch: {}/{} step: {}/{} Loss: {} AVG_Loss: {} Top-5 Accuracy: {} Batch_time: {}s".format(
                     epoch + 0,
                     args.epochs,
@@ -731,9 +731,9 @@ def print_trainable_parameters(models_dict):
     }
     print_trainable_parameters(models)
     """
-    print("\n" + "="*50)
-    print("EĞİTİLEN KATMANLAR VE PARAMETRE SAYILARI")
-    print("="*50)
+    logger.info("\n" + "="*50)
+    logger.info("EĞİTİLEN KATMANLAR VE PARAMETRE SAYILARI")
+    logger.info("="*50)
     
     total_params = 0
     
@@ -741,8 +741,8 @@ def print_trainable_parameters(models_dict):
         if model is None:
             continue
             
-        print(f"\nModel: {model_name}")
-        print("-" * 20)
+        logger.info(f"\nModel: {model_name}")
+        logger.info("-" * 20)
         
         model_params = 0
         trainable_layers = set()
@@ -756,30 +756,49 @@ def print_trainable_parameters(models_dict):
                 # Katman ismini sadeleştirip listeye ekle (örn: encoder.layer1.weight -> encoder.layer1)
                 layer_name = ".".join(name.split(".")[:-1])
                 # Detaylı yazdırmak isterseniz alttaki satırı açın:
-                # print(f"  - {name} ({num_params:,} parametre)")
+                # logger.info(f"  - {name} ({num_params:,} parametre)")
                 trainable_layers.add(layer_name)
         
-        print(f"  > Eğitilen Toplam Parametre: {model_params:,}")
+        logger.info(f"  > Eğitilen Toplam Parametre: {model_params:,}")
         if model_params > 0:
-            print("  > Örnek Eğitilen Katmanlar:")
+            logger.info("  > Örnek Eğitilen Katmanlar:")
             # İlk 5 eğitilen katmanı örnek olarak yazdır
             for i, layer in enumerate(list(trainable_layers)[:5]):
-                print(f"    * {layer}")
+                logger.info(f"    * {layer}")
             if len(trainable_layers) > 5:
-                print(f"    ... ve {len(trainable_layers) - 5} katman daha.")
+                logger.info(f"    ... ve {len(trainable_layers) - 5} katman daha.")
         else:
-            print("  > DİKKAT: Bu modelde eğitilen parametre yok (Tamamen dondurulmuş).")
+            logger.info("  > DİKKAT: Bu modelde eğitilen parametre yok (Tamamen dondurulmuş).")
             
         total_params += model_params
 
-    print("="*50)
-    print(f"TOPLAM EĞİTİLEBİLİR PARAMETRE SAYISI: {total_params:,}")
-    print("="*50 + "\n")
+    logger.info("="*50)
+    logger.info(f"TOPLAM EĞİTİLEBİLİR PARAMETRE SAYISI: {total_params:,}")
+    logger.info("="*50 + "\n")
+
+
+import logging
+def get_logger(filename=None):
+    logger = logging.getLogger('logger')
+    logger.setLevel(logging.DEBUG)
+    logging.basicConfig(format='%(asctime)s - %(levelname)s -   %(message)s',
+                    datefmt='%m/%d/%Y %H:%M:%S',
+                    level=logging.INFO)
+    if filename is not None:
+        handler = logging.FileHandler(filename)
+        handler.setLevel(logging.DEBUG)
+        handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s: %(message)s'))
+        logging.getLogger().addHandler(handler)
+    return logger
+
 
 def main(args):
-    print(args)
+    global logger 
+    logger = get_logger(os.path.join(args.output_dir, "log.txt"))
+
+    logger.info(args)
     global metrics_list
-    print(time.strftime("%m-%d  %H : %M : %S", time.localtime(time.time())))
+    logger.info(time.strftime("%m-%d  %H : %M : %S", time.localtime(time.time())))
 
     start_epoch = 0
     best_bleu4 = 0.0  # BLEU-4 score right now
@@ -787,13 +806,13 @@ def main(args):
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # sets device for model and PyTorch tensors
 
-    print(f"CUDA available: {torch.cuda.is_available()}")
+    logger.info(f"CUDA available: {torch.cuda.is_available()}")
 
     cudnn.benchmark = (
         True  # set to true only if inputs to model are fixed size; otherwise lot of computational overhead
     )
 
-    print("*"*20 ,device,"*"*20)
+    logger.info("*"*20 ,device,"*"*20)
     # Read word map
     word_map_file = os.path.join(args.data_folder, "WORDMAP_" + args.data_name + ".json")
     with open(word_map_file, "r") as j:
@@ -903,13 +922,13 @@ def main(args):
     encoder_feat = encoder_feat.to(device)
     decoder = decoder.to(device)
 
-    print("Checkpoint_savepath:{}".format(args.savepath))
-    print(
+    logger.info("Checkpoint_savepath:{}".format(args.savepath))
+    logger.info(
         "Encoder_image_mode:{}   Encoder_feat_mode:{}   Decoder_mode:{}".format(
             args.encoder_image_model, args.encoder_feat, args.decoder
         )
     )
-    print(
+    logger.info(
         "encoder_layers {} decoder_layers {} n_heads {} dropout {} encoder_lr {} "
         "decoder_lr {}".format(
             args.n_layers, args.decoder_n_layers, args.n_heads, args.dropout, args.encoder_lr, args.decoder_lr
@@ -978,7 +997,7 @@ def main(args):
         # Epochs
         for epoch in range(start_epoch, args.epochs):
 
-            print(time.strftime("%m-%d  %H : %M : %S", time.localtime(time.time())))
+            logger.info(time.strftime("%m-%d  %H : %M : %S", time.localtime(time.time())))
             
             if (args.dual_branch == True):
                 if(args.gate ==True):
@@ -1067,7 +1086,7 @@ def main(args):
 
             # -----------------------------------------------------------------------------------------------------
             # One epoch's validation
-            print("-------------------------epoch passed-------------------------")
+            logger.info("-------------------------epoch passed-------------------------")
 
             recent_bleu4 = metrics["Bleu_4"]
             
@@ -1076,11 +1095,11 @@ def main(args):
             best_bleu4 = max(recent_bleu4, best_bleu4)
             if not is_best:
                 epochs_since_improvement += 1
-                print("\nEpochs since last improvement: %d\n" % (epochs_since_improvement,))
+                logger.info("\nEpochs since last improvement: %d\n" % (epochs_since_improvement,))
             else:
                 epochs_since_improvement = 0
             if is_best:
-                print("-------------------------checkpoint Saved-------------------------")
+                logger.info("-------------------------checkpoint Saved-------------------------")
                 # Save checkpoint
                 if(args.dual_branch == True):
                     if(args.gate == True):
@@ -1129,14 +1148,14 @@ def main(args):
                 
             # Early Stopping
             if epochs_since_improvement == args.stop_criteria:
-                print(f"Early stopping triggered! Validation metrics hasn't increased for {args.stop_criteria} epochs.")
+                logger.info(f"Early stopping triggered! Validation metrics hasn't increased for {args.stop_criteria} epochs.")
                 break
             if epochs_since_improvement > 0 and epochs_since_improvement % 3 == 0:
                 adjust_learning_rate(decoder_optimizer, 0.7)
 
     # ---------------------------- EVAL SECTION ----------------------------
     else:
-        print(f"Loading checkpoint from {args.checkpoint_path}")
+        logger.info(f"Loading checkpoint from {args.checkpoint_path}")
         checkpoint = torch.load(args.checkpoint_path, map_location=str(device))
         
         if 'encoder_image' in checkpoint:
@@ -1164,7 +1183,7 @@ def main(args):
         if 'clip_encoder_image' in checkpoint:
             clip_encoder_image.load_state_dict(checkpoint['clip_encoder_image'])
         else:
-            print("WARNING: 'clip_encoder_image' weights not found in checkpoint. Using initialized weights.")
+            logger.info("WARNING: 'clip_encoder_image' weights not found in checkpoint. Using initialized weights.")
 
         #------------------------ TEXT ENCODER ENTEGRASYONU ----------------
         if(args.clip_text_encoder):
@@ -1301,7 +1320,7 @@ if __name__ == "__main__":
     parser.add_argument("--epochs", type=int, default=40, help="number of epochs to train for (if early stopping is not triggered).")
     parser.add_argument("--stop_criteria", type=int, default=10, help="training stop if epochs_since_improvement == stop_criteria")
     parser.add_argument("--batch_size", type=int, default=28, help="batch_size")
-    parser.add_argument("--print_freq", type=int, default=100, help="print training/validation stats every __ batches.")
+    parser.add_argument("--print_freq", type=int, default=100, help="printing training/validation stats every __ batches.")
     parser.add_argument("--workers", type=int, default=0, help="for data-loading; right now, only 0 works with h5pys in windows.")
     parser.add_argument("--encoder_lr", type=float, default=5e-5, help="learning rate for encoder if fine-tuning.")
     parser.add_argument("--decoder_lr", type=float, default=5e-5, help="learning rate for decoder.")
