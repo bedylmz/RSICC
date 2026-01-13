@@ -75,10 +75,9 @@ def evaluate_transformer(
         adaptLayer: Optional[nn.Module] = None,        # Burası
         adaptLayerClip: Optional[nn.Module] = None,
         gateSelf: Optional[nn.Module] = None,
+        logger = None,
 
         ):
-    
-    global logger
     # Load model
     encoder_feat = encoder_feat.to(device)
     encoder_feat.eval()

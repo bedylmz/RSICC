@@ -1073,6 +1073,7 @@ def main(args):
                         layerNormalizeLayer=layerNormalizeLayer,
                         adaptLayer=adaptLayer,
                         gateSelf=gateSelf,
+                        logger=logger,
                         )
               else:
                   metrics = evaluate_transformer(
@@ -1083,6 +1084,7 @@ def main(args):
                         decoder=decoder,
                         layerNormalizeLayer=layerNormalizeLayer,
                         adaptLayer=adaptLayer,
+                        logger=logger,
                         )
             else:
               metrics = evaluate_transformer(
@@ -1090,7 +1092,9 @@ def main(args):
                     clip_encoder_image=clip_encoder_image, 
                     encoder_feat=encoder_feat,
                     decoder=decoder,
-                    adaptLayerClip=adaptLayerClip)
+                    adaptLayerClip=adaptLayerClip,
+                    logger=logger,
+                    )
 
             # -----------------------------------------------------------------------------------------------------
             # One epoch's validation
