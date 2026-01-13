@@ -294,6 +294,7 @@ def train(
     gateSelf = None,
 
 ):
+    global logger 
     """
     Performs one epoch's training.
 
@@ -508,12 +509,14 @@ def train(
             )
 
 def key_transformation(old_key):
+    global logger 
     if old_key == "layer.0.weight":
         return "layer.1.weight"
 
     return old_key
 
 def prep_optimizer(args, model, device, num_train_optimization_steps, coef_lr=1.0):
+    global logger 
     if hasattr(model, "module"):
         model = model.module
 
@@ -620,6 +623,7 @@ def save_checkpoint(args= None,
                     gateSelf= None,
                     ):
         
+    global logger 
     """
     Model checkpoint'ini kaydeder.
     
@@ -673,6 +677,8 @@ def save_checkpoint(args= None,
 
 #suan kullanilmiyor
 def validate_loss(val_loader, encoder_image, clip_encoder_image, encoder_feat, decoder, criterion):
+    global logger 
+    
     """
     Validation seti üzerinde sadece Loss hesabı yapar.
     """
@@ -715,6 +721,8 @@ def validate_loss(val_loader, encoder_image, clip_encoder_image, encoder_feat, d
     return losses.avg
 
 def print_trainable_parameters(models_dict):
+    global logger 
+
     """
     Verilen model sözlüğündeki eğitilen (gradient hesaplanan) parametreleri ve
     toplam eğitilebilir parametre sayısını yazdırır.
