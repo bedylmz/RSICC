@@ -814,12 +814,12 @@ def main(args):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # sets device for model and PyTorch tensors
 
         logger.info(f"CUDA available: {torch.cuda.is_available()}")
+        logger.info(device)
 
     cudnn.benchmark = (
         True  # set to true only if inputs to model are fixed size; otherwise lot of computational overhead
     )
 
-    logger.info(device)
     # Read word map
     word_map_file = os.path.join(args.data_folder, "WORDMAP_" + args.data_name + ".json")
     with open(word_map_file, "r") as j:
