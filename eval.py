@@ -34,7 +34,7 @@ def save_captions(args, word_map, hypotheses, references):
 
         for word_idx in item:
             word = get_key(word_map, word_idx)
-            # print(word)
+            # logger.info(word)
             line_hypo += word[0] + " "
 
         result_json_file[str(kkk)] = []
@@ -77,6 +77,8 @@ def evaluate_transformer(
         gateSelf: Optional[nn.Module] = None,
 
         ):
+    
+    global logger
     # Load model
     encoder_feat = encoder_feat.to(device)
     encoder_feat.eval()
@@ -305,7 +307,7 @@ def evaluate_transformer(
                 # Convert unrolled indices to actual indices of scores
                 # prev_word_inds = top_k_words // vocab_size  # (s)
                 # if max(top_k_words)>vocab_size:
-                #     print(">>>>>>>>>>>>>>>>>>")
+                #     logger.info(">>>>>>>>>>>>>>>>>>")
                 prev_word_inds = torch.div(top_k_words, vocab_size, rounding_mode='floor')
                 next_word_inds = top_k_words % vocab_size  # (s)
 
@@ -388,18 +390,18 @@ def evaluate_transformer(
         # captions
         # save_captions(args, word_map, hypotheses, references)
 
-    print('len(nochange_references):', len(nochange_references))
-    print('len(change_references):', len(change_references))
+    logger.info('len(nochange_references):', len(nochange_references))
+    logger.info('len(change_references):', len(change_references))
     # Calculate BLEU1~4, METEOR, ROUGE_L, CIDEr scores
     if len(nochange_references)>0:
-        print('nochange_metric:')
+        logger.info('nochange_metric:')
         nochange_metric = get_eval_score(nochange_references, nochange_hypotheses)
-        print("nochange_acc:", nochange_acc / len(nochange_references))
+        logger.info("nochange_acc:", nochange_acc / len(nochange_references))
     if len(change_references)>0:
-        print('change_metric:')
+        logger.info('change_metric:')
         change_metric = get_eval_score(change_references, change_hypotheses)
-        print("change_acc:", change_acc / len(change_references))
-    print(".......................................................")
+        logger.info("change_acc:", change_acc / len(change_references))
+    logger.info(".......................................................")
     metrics = get_eval_score(references, hypotheses)
 
 
