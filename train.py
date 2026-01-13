@@ -28,8 +28,6 @@ torch.manual_seed(seed)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(seed)
 
-logger.info(f"Kullanılan Random Seed: {seed}") # İleride gerekirse tekrar üretmek için loglayın
-
 import torch
 
 class BatchNormalize(torch.nn.Module):
@@ -803,6 +801,8 @@ def get_logger(filename=None):
 def main(args):
     global logger 
     logger = get_logger(os.path.join(args.output_dir, "log.txt"))
+    logger.info(f"Kullanılan Random Seed: {seed}") # İleride gerekirse tekrar üretmek için loglayın
+
 
     logger.info(args)
     global metrics_list
