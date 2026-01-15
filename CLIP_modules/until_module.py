@@ -142,6 +142,28 @@ class PreTrainedModel(nn.Module):
             if len(error_msgs) > 0:
                 logger.error("Weights from pretrained model cause errors in {}: {}"
                              .format(model.__class__.__name__, "\n   " + "\n   ".join(error_msgs)))
+                
+            # --- YENİ EKLENEN KISIM: FREEZE MANTIĞI ---
+            logger.info("-" * 30)
+            logger.info("OTOMATİK FREEZE İŞLEMİ BAŞLATILIYOR...")
+            
+            frozen_count = 0
+            trainable_count = 0
+            
+            for name, param in model.named_parameters():
+                # Eğer parametre 'missing_keys' içindeyse, yüklenmemiştir -> EĞİTİLSİN
+                if name in missing_keys:
+                    param.requires_grad = True
+                    trainable_count += 1
+                # Eğer parametre listede yoksa, başarıyla yüklenmiştir -> DONDURULSUN
+                else:
+                    param.requires_grad = False
+                    frozen_count += 1
+                    
+            logger.info(f"Sonuç: {frozen_count} katman donduruldu (Pretrained).")
+            logger.info(f"Sonuç: {trainable_count} katman eğitime açık (Random Init - Missing).")
+            logger.info("-" * 30)
+            # ----------------------------------------------------
 
         return model
 

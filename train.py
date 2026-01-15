@@ -63,8 +63,7 @@ class CLIPVisualEncoder(nn.Module):
         self.visual_encoder.cuda()
 
         # 4. CLIP encoder (freeze) 
-        for param in self.visual_encoder.parameters():
-            param.requires_grad = False # veya True
+        
 
 class CustomLayerNorm(nn.Module):
     def __init__(self, clip_dim=768, resnet_dim=1024):
