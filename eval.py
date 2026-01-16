@@ -31,7 +31,7 @@ class BatchNormalize(torch.nn.Module):
         return (tensor - self.mean) / self.std
 
 
-def save_captions(args, word_map, hypotheses, references):
+def save_captions(args, word_map, hypotheses, references, logger):
     result_json_file = {}
     reference_json_file = {}
     kkk = -1
@@ -62,12 +62,9 @@ def save_captions(args, word_map, hypotheses, references):
                 line_repo += word[0] + " "
             reference_json_file[str(kkk)].append(line_repo)
             line_repo += "\r\n"
-
-    with open('eval_results_fortest/' + args.Split +'/'+args.encoder_image + "_" +args.encoder_feat+"_" +args.decoder + '_res.json', 'w') as f:
-        json.dump(result_json_file, f)
-
-    with open('eval_results_fortest/' + args.Split +'/'+ args.encoder_image + "_" +args.encoder_feat+"_" +args.decoder + '_gts.json', 'w') as f:
-        json.dump(reference_json_file, f)
+    
+    logger.info(result_json_file)
+    logger.info(reference_json_file)
 
 def get_key(dict_, value):
   return [k for k, v in dict_.items() if v == value]
@@ -940,6 +937,8 @@ def main(args):
                 decoder=decoder,
                 adaptLayerClip=adaptLayerClip,
                 logger=logger)
+        save_captions(args, word_map, hypotheses, references, logger)
+    
     else:
 
         if(args.dual_branch):
