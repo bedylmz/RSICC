@@ -761,13 +761,14 @@ def main(args):
     
     # ------------------------------ CLIP ENTEGRASYONU ------------------------------
 
+    if(args.eval_just_RSICC == False):
 
-    clip = CLIPVisualEncoder(args, args.clip_path)
+        clip = CLIPVisualEncoder(args, args.clip_path)
 
-    clip_encoder_image = clip.visual_encoder.float()
-    clip_encoder_image = clip_encoder_image.cuda()
+        clip_encoder_image = clip.visual_encoder.float()
+        clip_encoder_image = clip_encoder_image.cuda()
 
-    clip_encoder_image.eval()
+        clip_encoder_image.eval()
 
     if(args.dual_branch == True):
         adaptLayer = AdaptLayer()
@@ -898,22 +899,7 @@ def main(args):
             logger.warning("!!!!!!!!!!!!!!!!!     WARNING        !!!!!!!!!!!!!!!!!")
             logger.warning("No 'clip_encoder_image' weights found in checkpoint.")
 
-        #------------------------ TEXT ENCODER ENTEGRASYONU ----------------
-        if(args.clip_text_encoder):
-            from CLIP_modules.tokenization_clip import SimpleTokenizer
-
-            clip_tokenizer = SimpleTokenizer()
-            clip_model_ref = clip_encoder_image.clip_model.clip
-            
-            # Köprü fonksiyonunu çalıştır
-            bridge_embeddings_and_transfer(
-                rsicc_decoder=decoder, 
-                clip_model=clip_model_ref, 
-                clip_tokenizer=clip_tokenizer, 
-                rsicc_word_map=word_map,
-                logger=logger
-            )
-        #------------------------ TEXT ENCODER ENTEGRASYONU ----------------
+        
 
         if(args.dual_branch):
               if(args.gate):
