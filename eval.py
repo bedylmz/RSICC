@@ -987,6 +987,15 @@ if __name__ == "__main__":
     parser.add_argument("--clip_path", type=str, default="/content/RSICC/ckpts/pytorch_model.bin.0", help="Layer NO. of intra module")
     parser.add_argument("--save_model_path", type=str, default="/content/RSICC/ckpts", help="Layer NO. of intra module")
     
+    parser.add_argument("--task_type", default="retrieval", type=str, help="Point the task `retrieval` to finetune.")
+    parser.add_argument("--datatype", default="msrvtt", type=str, help="Point the dataset to finetune.")
+    parser.add_argument("--world_size", default=0, type=int, help="distribted training")
+    parser.add_argument("--local_rank", default=0, type=int, help="distribted training")
+    parser.add_argument("--rank", default=0, type=int, help="distribted training")
+    parser.add_argument("--coef_lr", type=float, default=1.0, help="coefficient for bert branch.")
+    parser.add_argument("--use_mil", action="store_true", help="Whether use MIL as Miech et. al. (2020).")
+    parser.add_argument("--sampled_use_mil", action="store_true", help="Whether MIL, has a high priority than use_mil.")
+
     #params for dual branch
     parser.add_argument("--dual_branch", action='store_true', help="Enable dual branch")
     parser.add_argument("--gate", action='store_true', help="Enable dual branch")
