@@ -763,7 +763,7 @@ def main(args):
 
     if(args.eval_just_RSICC == False):
 
-        clip = CLIPVisualEncoder(args.clip_path)
+        clip = CLIPVisualEncoder(args, args.clip_path)
 
         clip_encoder_image = clip.visual_encoder.float()
         clip_encoder_image = clip_encoder_image.cuda()
