@@ -735,53 +735,6 @@ def evaluate_transformer(
 
     return metrics
 
-if __name__ == '__main__':
-
-    parser = argparse.ArgumentParser(description='Change_Captioning')
-    parser.add_argument('--data_folder', default="./data/",help='folder with data files saved by create_input_files.py.')
-    parser.add_argument('--data_name', default="LEVIR_CC_5_cap_per_img_5_min_word_freq",help='base name shared by data files.')
-
-    parser.add_argument('--encoder_image', default="resnet101")
-    parser.add_argument('--encoder_feat', default="MCCFormers_diff_as_Q")
-    parser.add_argument('--decoder', default="trans", help="decoder img2txt")  #
-    parser.add_argument('--Split', default="TEST", help='which')
-    parser.add_argument('--epoch', default="epoch", help='which')
-    parser.add_argument('--beam_size', type=int, default=64, help='beam_size.')
-    parser.add_argument('--path', default="./models_checkpoint/", help='model checkpoint.')
-
-
-
-    args = parser.parse_args()
-
-    filename = os.listdir(args.path)
-    for i in range(len(filename)):
-        # if (args.epoch in filename[i]) or (args.encoder_feat not in filename[i])or (args.decoder not in filename[i]) :
-        #     continue
-        print(time.strftime("%m-%d  %H : %M : %S", time.localtime(time.time())))
-
-        checkpoint_path = os.path.join(args.path, filename[i])
-        print(args.path + filename[i])
-
-        # Load model
-        checkpoint = torch.load(checkpoint_path, map_location=str(device))
-        encoder_image = checkpoint['encoder_image']
-        encoder_feat = checkpoint['encoder_feat']
-        decoder = checkpoint['decoder']
-
-        if args.decoder == "trans":
-            # metrics = evaluate_ori(args,encoder_image,encoder_feat,decoder)
-            metrics = evaluate_transformer(args,encoder_image,encoder_feat,decoder)
-
-        print("{} - beam size {}: BLEU-1 {} BLEU-2 {} BLEU-3 {} BLEU-4 {} METEOR {} ROUGE_L {} CIDEr {}".format
-              (args.decoder, args.beam_size, metrics["Bleu_1"], metrics["Bleu_2"], metrics["Bleu_3"],
-               metrics["Bleu_4"],
-               metrics["METEOR"], metrics["ROUGE_L"], metrics["CIDEr"]))
-        print("\n")
-        print("\n")
-        time.sleep(10)
-
-
-
 def main(args):
     global logger 
     logger = get_logger(os.path.join(args.save_model_path, "log.txt"))
