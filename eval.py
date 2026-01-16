@@ -900,10 +900,10 @@ def main(args):
             logger.warning("No 'clip_encoder_image' weights found in checkpoint.")
 
         
-
-        if(args.dual_branch):
+        if(args.eval_caption):
+            if(args.dual_branch):
               if(args.gate):
-                evaluate_transformer(
+                hypotheses, references = evaluate_transformer_caption(
                         args, 
                         encoder_image=encoder_image, 
                         clip_encoder_image=clip_encoder_image, 
@@ -915,7 +915,7 @@ def main(args):
                         logger=logger,
                         )
               else:
-                evaluate_transformer(
+                hypotheses, references = evaluate_transformer_caption(
                         args, 
                         encoder_image=encoder_image, 
                         clip_encoder_image=clip_encoder_image, 
@@ -926,7 +926,7 @@ def main(args):
                         logger=logger,
                         )
         elif(args.eval_just_RSICC):
-                evaluate_transformer(
+                hypotheses, references = evaluate_transformer_caption(
                         args, 
                         encoder_image=encoder_image, 
                         encoder_feat=encoder_feat,
@@ -934,13 +934,54 @@ def main(args):
                         logger=logger,
                         )
         else:
-                evaluate_transformer(
+                hypotheses, references = evaluate_transformer_caption(
                     args, 
                     clip_encoder_image=clip_encoder_image, 
                     encoder_feat=encoder_feat,
                     decoder=decoder,
                     adaptLayerClip=adaptLayerClip,
                     logger=logger)
+    else:
+            if(args.dual_branch):
+                if(args.gate):
+                    evaluate_transformer(
+                            args, 
+                            encoder_image=encoder_image, 
+                            clip_encoder_image=clip_encoder_image, 
+                            encoder_feat=encoder_feat,
+                            decoder=decoder,
+                            layerNormalizeLayer=layerNormalizeLayer,
+                            adaptLayer=adaptLayer,
+                            gateSelf= gateSelf,
+                            logger=logger,
+                            )
+                else:
+                    evaluate_transformer(
+                            args, 
+                            encoder_image=encoder_image, 
+                            clip_encoder_image=clip_encoder_image, 
+                            encoder_feat=encoder_feat,
+                            decoder=decoder,
+                            layerNormalizeLayer=layerNormalizeLayer,
+                            adaptLayer=adaptLayer,
+                            logger=logger,
+                            )
+            elif(args.eval_just_RSICC):
+                    evaluate_transformer(
+                            args, 
+                            encoder_image=encoder_image, 
+                            encoder_feat=encoder_feat,
+                            decoder=decoder,
+                            logger=logger,
+                            )
+            else:
+                    evaluate_transformer(
+                        args, 
+                        clip_encoder_image=clip_encoder_image, 
+                        encoder_feat=encoder_feat,
+                        decoder=decoder,
+                        adaptLayerClip=adaptLayerClip,
+                        logger=logger)
 
 if __name__ == "__main__":
     folder_path = ""
