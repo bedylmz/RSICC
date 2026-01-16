@@ -925,7 +925,7 @@ def main(args):
                         adaptLayer=adaptLayer,
                         logger=logger,
                         )
-        elif(args.eval_just_RSICC):
+            elif(args.eval_just_RSICC):
                 hypotheses, references = evaluate_transformer_caption(
                         args, 
                         encoder_image=encoder_image, 
@@ -933,7 +933,7 @@ def main(args):
                         decoder=decoder,
                         logger=logger,
                         )
-        else:
+            else:
                 hypotheses, references = evaluate_transformer_caption(
                     args, 
                     clip_encoder_image=clip_encoder_image, 
