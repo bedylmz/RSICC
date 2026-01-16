@@ -1006,6 +1006,9 @@ if __name__ == "__main__":
     parser.add_argument("--eval_mode", action='store_true')
     parser.add_argument("--checkpoint_path", type=str, default="")
 
+    parser.add_argument("--eval_caption", action="store_true", help="Whether to run training.")
+
+
     #params for CLIP4IDC implementation
     parser.add_argument("--do_pretrain", action="store_true", help="Whether to run training.")
     parser.add_argument("--do_train", action="store_true", help="Whether to run training.")
