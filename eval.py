@@ -969,6 +969,7 @@ if __name__ == "__main__":
     
     # Model parameters
     parser.add_argument('--encoder_image', default="resnet101", help='which model does encoder use?')
+    parser.add_argument("--encoder_image_model", default="clip4IDC", help="which model does encoder use?")
     parser.add_argument("--encoder_feat", default="MCCFormers_diff_as_Q")
     parser.add_argument("--decoder", default="trans")
     parser.add_argument("--n_heads", type=int, default=8, help="Multi-head attention in Transformer.")
@@ -976,17 +977,37 @@ if __name__ == "__main__":
     parser.add_argument("--decoder_n_layers", type=int, default=1)
     parser.add_argument("--feature_dim_de", type=int, default=1024)
     parser.add_argument("--dropout", type=float, default=0.5, help="dropout")
-
     parser.add_argument("--eval_mode", action='store_true')
     parser.add_argument("--checkpoint_path", type=str, default="")
 
+    #params for CLIP4IDC implementation
+    parser.add_argument("--do_pretrain", action="store_true", help="Whether to run training.")
+    parser.add_argument("--do_train", action="store_true", help="Whether to run training.")
+    parser.add_argument("--dataloader_type", type=str, default="test")
 
     parser.add_argument("--soft", action="store_true")
+
+
+    parser.add_argument("--lr", type=float, default=0.0001, help="initial learning rate")
+    parser.add_argument("--lr_decay", type=float, default=0.9, help="Learning rate exp epoch decay")
+    parser.add_argument("--n_display", type=int, default=100, help="Information display frequence")
     parser.add_argument("--seed", type=int, default=42, help="random seed")
+    parser.add_argument("--max_words", type=int, default=20, help="")
+    parser.add_argument("--feature_framerate", type=int, default=1, help="")
     parser.add_argument("--margin", type=float, default=0.1, help="margin for loss")
-    parser.add_argument("--clip_path", type=str, default="/content/RSICC/ckpts/pytorch_model.bin.0", help="Layer NO. of intra module")
-    parser.add_argument("--save_model_path", type=str, default="/content/RSICC/ckpts", help="Layer NO. of intra module")
-    
+    parser.add_argument("--hard_negative_rate", type=float, default=0.5, help="rate of intra negative sample")
+    parser.add_argument("--negative_weighting", type=int, default=1, help="Weight the loss for intra negative")
+    parser.add_argument("--n_pair", type=int, default=1, help="Num of pair to output from data loader")
+
+    parser.add_argument("--cross_model", default="cross-base", type=str, required=False, help="Cross module")
+    parser.add_argument("--decoder_model", default="decoder-base", type=str, required=False, help="Decoder module")
+    parser.add_argument("--init_model", default=None, type=str, required=False, help="Initial model.")
+    parser.add_argument("--do_lower_case", action="store_true", help="Set this flag if you are using an uncased model.")
+
+    parser.add_argument("--gradient_accumulation_steps",type=int,default=1,help="Number of updates steps to accumulate before performing a " "backward/update pass.",)
+
+    parser.add_argument("--cache_dir",default="",type=str,help="Where do you want to store the pre-trained models downloaded " "from s3",)
+
     parser.add_argument("--task_type", default="retrieval", type=str, help="Point the task `retrieval` to finetune.")
     parser.add_argument("--datatype", default="msrvtt", type=str, help="Point the dataset to finetune.")
     parser.add_argument("--world_size", default=0, type=int, help="distribted training")
@@ -996,25 +1017,37 @@ if __name__ == "__main__":
     parser.add_argument("--use_mil", action="store_true", help="Whether use MIL as Miech et. al. (2020).")
     parser.add_argument("--sampled_use_mil", action="store_true", help="Whether MIL, has a high priority than use_mil.")
 
+    parser.add_argument("--text_num_hidden_layers", type=int, default=12, help="Layer NO. of text.")
+    parser.add_argument("--visual_num_hidden_layers", type=int, default=12, help="Layer NO. of visual.")
+    parser.add_argument("--intra_num_hidden_layers", type=int, default=9, help="Layer NO. of intra module")
+    parser.add_argument("--cross_num_hidden_layers", type=int, default=2, help="Layer NO. of cross.")
+
+    parser.add_argument("--freeze_layer_num", type=int, default=0, help="Layer NO. of CLIP need to freeze.")
+    parser.add_argument("--linear_patch", type=str, default="3d", choices=["2d", "3d"], help="linear projection of flattened patches.")
+
+    parser.add_argument("--pretrained_clip_name", default="ViT-B/32", type=str, help="Choose a CLIP version")
+
+    parser.add_argument("--clip_path", type=str, default="/content/RSICC/ckpts/pytorch_model.bin.0", help="Layer NO. of intra module")
+    parser.add_argument("--save_model_path", type=str, default="/content/RSICC/ckpts", help="Layer NO. of intra module")
+    
     #params for dual branch
     parser.add_argument("--dual_branch", action='store_true', help="Enable dual branch")
     parser.add_argument("--gate", action='store_true', help="Enable dual branch")
     parser.add_argument("--eval_just_RSICC", action='store_true', help="Enable dual branch")
 
-    parser.add_argument("--cross_model", default="cross-base", type=str, required=False, help="Cross module")
-    parser.add_argument("--decoder_model", default="decoder-base", type=str, required=False, help="Decoder module")
-    parser.add_argument("--init_model", default=None, type=str, required=False, help="Initial model.")
-    parser.add_argument("--do_lower_case", action="store_true", help="Set this flag if you are using an uncased model.")
-
-
     #params for text encoder
     parser.add_argument("--clip_text_encoder", action='store_true')
 
     # Training parameters
+    parser.add_argument("--epochs", type=int, default=40, help="number of epochs to train for (if early stopping is not triggered).")
     parser.add_argument("--stop_criteria", type=int, default=10, help="training stop if epochs_since_improvement == stop_criteria")
     parser.add_argument("--batch_size", type=int, default=28, help="batch_size")
+    parser.add_argument("--print_freq", type=int, default=100, help="printing training/validation stats every __ batches.")
     parser.add_argument("--workers", type=int, default=0, help="for data-loading; right now, only 0 works with h5pys in windows.")
     parser.add_argument("--encoder_lr", type=float, default=5e-5, help="learning rate for encoder if fine-tuning.")
+    parser.add_argument("--decoder_lr", type=float, default=5e-5, help="learning rate for decoder.")
+    parser.add_argument("--clip_encoder_lr", type=float, default=0.0001, help="learning rate for CLIP fine-tuning.")    
+    parser.add_argument("--grad_clip", type=float, default=5.0, help="clip gradients at an absolute value of.")
     parser.add_argument("--fine_tune_encoder", type=bool, default=True, help="whether fine-tune encoder or not")
     parser.add_argument("--checkpoint", default="None", help="path to checkpoint, None if none.")
     
@@ -1022,6 +1055,12 @@ if __name__ == "__main__":
     parser.add_argument("--Split", default="VAL", help="which")
     parser.add_argument("--beam_size", type=int, default=1, help="beam_size.")
     parser.add_argument("--savepath", default=folder_path)
+    parser.add_argument(
+        "--warmup_proportion",
+        default=0.1,
+        type=float,
+        help="Proportion of training to perform linear learning rate warmup " "for. E.g., 0.1 = 10%% of training.",
+    )
 
     args = parser.parse_args()
     main(args)
