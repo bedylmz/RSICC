@@ -992,6 +992,12 @@ if __name__ == "__main__":
     parser.add_argument("--gate", action='store_true', help="Enable dual branch")
     parser.add_argument("--eval_just_RSICC", action='store_true', help="Enable dual branch")
 
+    parser.add_argument("--cross_model", default="cross-base", type=str, required=False, help="Cross module")
+    parser.add_argument("--decoder_model", default="decoder-base", type=str, required=False, help="Decoder module")
+    parser.add_argument("--init_model", default=None, type=str, required=False, help="Initial model.")
+    parser.add_argument("--do_lower_case", action="store_true", help="Set this flag if you are using an uncased model.")
+
+
     #params for text encoder
     parser.add_argument("--clip_text_encoder", action='store_true')
 
