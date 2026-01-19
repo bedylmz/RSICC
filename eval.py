@@ -166,228 +166,224 @@ def evaluate_transformer_caption(
                                 device=device)
         # -----------------------------------------------
 
-        for i, (img_pairs, caps, caplens, allcaps) in enumerate(
-                tqdm(loader, desc=args.Split + " EVALUATING AT BEAM SIZE " + str(beam_size))):
-            # 5 image is the same when "shuffle=False" of the dataloader
-            if (i + 1) % 5 != 0:
-                continue
-            # if i>10:
-            #     break
-            k = beam_size
+        (img_pairs, caps, caplens, allcaps) = (tqdm(loader, desc=args.Split + " EVALUATING AT BEAM SIZE " + str(beam_size)))
+        # 5 image is the same when "shuffle=False" of the dataloader
+        # if i>10:
+        #     break
+        k = beam_size
 
-            # Move to GPU device, if available
-            img_pairs = img_pairs.to(device)  # [1, 2, 3, 256, 256]
-            # Forward prop.
-            imgs_A = img_pairs[:, 0, :, :, :]
-            imgs_B = img_pairs[:, 1, :, :, :]
+        # Move to GPU device, if available
+        img_pairs = img_pairs.to(device)  # [1, 2, 3, 256, 256]
+        # Forward prop.
+        imgs_A = img_pairs[:, 0, :, :, :]
+        imgs_B = img_pairs[:, 1, :, :, :]
 
-            if(args.dual_branch == True ):
-                b, t, c, h, w = img_pairs.shape
-                imgs_full = img_pairs.view(-1, c, h, w) 
-                imgs_full_clip = norm_clip(imgs_full) # CLIP için normalize et
+        if(args.dual_branch == True ):
+            b, t, c, h, w = img_pairs.shape
+            imgs_full = img_pairs.view(-1, c, h, w) 
+            imgs_full_clip = norm_clip(imgs_full) # CLIP için normalize et
 
-                # 2. Pass the flattened pairs and set frames to 2
-                # Note: Remove parentheses from .shape (it is a property, not a function)
-                clip_out = clip_encoder_image(imgs_full_clip, 2) # 768 100 b
-                size = clip_out.size(1)//2
-                clip_out_A = clip_out[:,1:size,:] # 768 1 b
-                clip_out_B = clip_out[:,size+1:,:]
+            # 2. Pass the flattened pairs and set frames to 2
+            clip_out = clip_encoder_image(imgs_full_clip, 2) # 768 100 b
+            size = clip_out.size(1)//2
+            clip_out_A = clip_out[:,1:size,:] # 768 1 b
+            clip_out_B = clip_out[:,size+1:,:]
 
-                imgs_A_resnet = norm_resnet(imgs_A) # ResNet için normalize et
-                imgs_B_resnet = norm_resnet(imgs_B)
-                
-                resnet_A = encoder_image(imgs_A_resnet)
-                resnet_B = encoder_image(imgs_B_resnet)
+            imgs_A_resnet = norm_resnet(imgs_A) # ResNet için normalize et
+            imgs_B_resnet = norm_resnet(imgs_B)
+            
+            resnet_A = encoder_image(imgs_A_resnet)
+            resnet_B = encoder_image(imgs_B_resnet)
 
-                resnet_A_normed, clip_A_normed = layerNormalizeLayer(resnet_A, clip_out_A)
-                resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B, clip_out_B)          
+            resnet_A_normed, clip_A_normed = layerNormalizeLayer(resnet_A, clip_out_A)
+            resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B, clip_out_B)          
 
-                final_A, final_B = adaptLayer(resnet_A_normed, resnet_B_normed, clip_A_normed, clip_B_normed, soft=args.soft)
+            final_A, final_B = adaptLayer(resnet_A_normed, resnet_B_normed, clip_A_normed, clip_B_normed, soft=args.soft)
 
-                # train fonksiyonu içinde (satır 194 civarı)
-                # Girdi: [Batch, 512, 14, 14]
-                if(args.gate ==True and 0 == 1):
-                    # 1. Kanalı sona alıp düzleştirin: [Batch, 196, 512]
-                    b, c, h, w = resnet_A_adapt.shape
-                    resnet_A_flat = resnet_A_adapt.permute(0, 2, 3, 1).view(b, h*w, c) 
+            # train fonksiyonu içinde (satır 194 civarı)
+            # Girdi: [Batch, 512, 14, 14]
+            if(args.gate ==True and 0 == 1):
+                # 1. Kanalı sona alıp düzleştirin: [Batch, 196, 512]
+                b, c, h, w = resnet_A_adapt.shape
+                resnet_A_flat = resnet_A_adapt.permute(0, 2, 3, 1).view(b, h*w, c) 
 
-                    # 2. Attention uygulayın (Çıktı yine [Batch, 196, 512] olacak)
-                    resnet_A_att, _ = gateSelf(resnet_A_flat)
+                # 2. Attention uygulayın (Çıktı yine [Batch, 196, 512] olacak)
+                resnet_A_att, _ = gateSelf(resnet_A_flat)
 
-                    # 3. Tekrar [Batch, 512, 14, 14] formatına dönün (Concat için gerekli)
-                    resnet_A_adapt = resnet_A_att.view(b, h, w, c).permute(0, 3, 1, 2)
+                # 3. Tekrar [Batch, 512, 14, 14] formatına dönün (Concat için gerekli)
+                resnet_A_adapt = resnet_A_att.view(b, h, w, c).permute(0, 3, 1, 2)
 
-                    b, c, h, w = resnet_B_adapt.shape
-                    resnet_B_flat = resnet_B_adapt.permute(0, 2, 3, 1).view(b, h*w, c) 
+                b, c, h, w = resnet_B_adapt.shape
+                resnet_B_flat = resnet_B_adapt.permute(0, 2, 3, 1).view(b, h*w, c) 
 
-                    # 2. Attention uygulayın (Çıktı yine [Batch, 196, 512] olacak)
-                    resnet_B_att, _ = gateSelf(resnet_B_flat)
+                # 2. Attention uygulayın (Çıktı yine [Batch, 196, 512] olacak)
+                resnet_B_att, _ = gateSelf(resnet_B_flat)
 
-                    # 3. Tekrar [Batch, 512, 14, 14] formatına dönün (Concat için gerekli)
-                    resnet_B_adapt = resnet_B_att.view(b, h, w, c).permute(0, 3, 1, 2)
+                # 3. Tekrar [Batch, 512, 14, 14] formatına dönün (Concat için gerekli)
+                resnet_B_adapt = resnet_B_att.view(b, h, w, c).permute(0, 3, 1, 2)
 
-                encoder_out = encoder_feat(
-                    final_A,
-                    final_B,
-                ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
-            elif(args.eval_just_RSICC):
+            encoder_out = encoder_feat(
+                final_A,
+                final_B,
+            ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
+        elif(args.eval_just_RSICC):
 
-                imgs_A_resnet = norm_resnet(imgs_A) # ResNet için normalize et
-                imgs_B_resnet = norm_resnet(imgs_B)
+            imgs_A_resnet = norm_resnet(imgs_A) # ResNet için normalize et
+            imgs_B_resnet = norm_resnet(imgs_B)
 
-                imgs_A = encoder_image(imgs_A_resnet)
-                imgs_B = encoder_image(imgs_B_resnet)  # encoder_image :[1, 1024,14,14]
+            imgs_A = encoder_image(imgs_A_resnet)
+            imgs_B = encoder_image(imgs_B_resnet)  # encoder_image :[1, 1024,14,14]
 
-                encoder_out = encoder_feat(imgs_A, imgs_B) # encoder_out: (S, batch, feature_dim)
+            encoder_out = encoder_feat(imgs_A, imgs_B) # encoder_out: (S, batch, feature_dim)
+        else:
+            b, t, c, h, w = img_pairs.shape
+            imgs_full = img_pairs.view(-1, c, h, w) 
+            imgs_full_clip = norm_clip(imgs_full) # CLIP için normalize et
+
+
+            # 2. Pass the flattened pairs and set frames to 2
+            # Note: Remove parentheses from .shape (it is a property, not a function)
+            clip_out = clip_encoder_image(imgs_full_clip, 2)
+            size = clip_out.size(1)//2
+            clip_out_A = clip_out[:,1:size,:] # 768 1 b
+            clip_out_B = clip_out[:,size+1:,:]
+            clip_out_A = adaptLayerClip(clip_out_A)
+            clip_out_B = adaptLayerClip(clip_out_B)
+
+            encoder_out = encoder_feat(
+                clip_out_A,
+                clip_out_B,
+            ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
+
+        tgt = torch.zeros(52, k).to(device).to(torch.int64)
+        tgt_length = tgt.size(0)
+        mask = (torch.triu(torch.ones(tgt_length, tgt_length)) == 1).transpose(0, 1)
+        mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0))
+        mask = mask.to(device)
+
+        tgt[0, :] = torch.LongTensor([word_map['<start>']]*k).to(device) # k_prev_words:[52,k]
+        # Tensor to store top k sequences; now they're just <start>
+        seqs = torch.LongTensor([[word_map['<start>']]*1] * k).to(device)  # [1,k]
+        # Tensor to store top k sequences' scores; now they're just 0
+        top_k_scores = torch.zeros(k, 1).to(device)
+        # Lists to store completed sequences and scores
+        complete_seqs = []
+        complete_seqs_scores = []
+        step = 1
+
+        k_prev_words = tgt.permute(1,0)
+        S = encoder_out.size(0)
+        encoder_dim = encoder_out.size(-1)
+
+        # # We'll treat the problem as having a batch size of k, where k is beam_size
+        encoder_out = encoder_out.expand(S,k, encoder_dim)  # [S,k, encoder_dim]
+        encoder_out = encoder_out.permute(1,0,2)
+
+        # Start decoding
+        # s is a number less than or equal to k, because sequences are removed from this process once they hit <end>
+        while True:
+            tgt = k_prev_words.permute(1,0)
+            tgt_embedding = decoder.vocab_embedding(tgt)
+            tgt_embedding = decoder.position_encoding(tgt_embedding)  # (length, batch, feature_dim)
+
+            encoder_out = encoder_out.permute(1, 0, 2)
+            pred = decoder.transformer(tgt_embedding, encoder_out, tgt_mask=mask)  # (length, batch, feature_dim)
+            encoder_out = encoder_out.permute(1, 0, 2)
+            pred = decoder.wdc(pred)  # (length, batch, vocab_size)
+            scores = pred.permute(1,0,2)  # (batch,length,  vocab_size)
+            scores = scores[:, step - 1, :].squeeze(1)  # [s, 1, vocab_size] -> [s, vocab_size]
+            scores = F.log_softmax(scores, dim=1)
+            # top_k_scores: [s, 1]
+            scores = top_k_scores.expand_as(scores) + scores  # [s, vocab_size]
+            # For the first step, all k points will have the same scores (since same k previous words, h, c)
+            if step == 1:
+                top_k_scores, top_k_words = scores[0].topk(k, 0, True, True)  # (s)
             else:
-                b, t, c, h, w = img_pairs.shape
-                imgs_full = img_pairs.view(-1, c, h, w) 
-                imgs_full_clip = norm_clip(imgs_full) # CLIP için normalize et
+                # Unroll and find top scores, and their unrolled indices
+                top_k_scores, top_k_words = scores.view(-1).topk(k, 0, True, True)  # (s)
 
 
-                # 2. Pass the flattened pairs and set frames to 2
-                # Note: Remove parentheses from .shape (it is a property, not a function)
-                clip_out = clip_encoder_image(imgs_full_clip, 2)
-                size = clip_out.size(1)//2
-                clip_out_A = clip_out[:,1:size,:] # 768 1 b
-                clip_out_B = clip_out[:,size+1:,:]
-                clip_out_A = adaptLayerClip(clip_out_A)
-                clip_out_B = adaptLayerClip(clip_out_B)
+            # Convert unrolled indices to actual indices of scores
+            # prev_word_inds = top_k_words // vocab_size  # (s)
+            # if max(top_k_words)>vocab_size:
+            #     logger.info(">>>>>>>>>>>>>>>>>>")
+            prev_word_inds = torch.div(top_k_words, vocab_size, rounding_mode='floor')
+            next_word_inds = top_k_words % vocab_size  # (s)
 
-                encoder_out = encoder_feat(
-                    clip_out_A,
-                    clip_out_B,
-                ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
-
-            tgt = torch.zeros(52, k).to(device).to(torch.int64)
-            tgt_length = tgt.size(0)
-            mask = (torch.triu(torch.ones(tgt_length, tgt_length)) == 1).transpose(0, 1)
-            mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0))
-            mask = mask.to(device)
-
-            tgt[0, :] = torch.LongTensor([word_map['<start>']]*k).to(device) # k_prev_words:[52,k]
-            # Tensor to store top k sequences; now they're just <start>
-            seqs = torch.LongTensor([[word_map['<start>']]*1] * k).to(device)  # [1,k]
-            # Tensor to store top k sequences' scores; now they're just 0
-            top_k_scores = torch.zeros(k, 1).to(device)
-            # Lists to store completed sequences and scores
-            complete_seqs = []
-            complete_seqs_scores = []
-            step = 1
-
-            k_prev_words = tgt.permute(1,0)
-            S = encoder_out.size(0)
-            encoder_dim = encoder_out.size(-1)
-
-            # # We'll treat the problem as having a batch size of k, where k is beam_size
-            encoder_out = encoder_out.expand(S,k, encoder_dim)  # [S,k, encoder_dim]
-            encoder_out = encoder_out.permute(1,0,2)
-
-            # Start decoding
-            # s is a number less than or equal to k, because sequences are removed from this process once they hit <end>
-            while True:
-                tgt = k_prev_words.permute(1,0)
-                tgt_embedding = decoder.vocab_embedding(tgt)
-                tgt_embedding = decoder.position_encoding(tgt_embedding)  # (length, batch, feature_dim)
-
-                encoder_out = encoder_out.permute(1, 0, 2)
-                pred = decoder.transformer(tgt_embedding, encoder_out, tgt_mask=mask)  # (length, batch, feature_dim)
-                encoder_out = encoder_out.permute(1, 0, 2)
-                pred = decoder.wdc(pred)  # (length, batch, vocab_size)
-                scores = pred.permute(1,0,2)  # (batch,length,  vocab_size)
-                scores = scores[:, step - 1, :].squeeze(1)  # [s, 1, vocab_size] -> [s, vocab_size]
-                scores = F.log_softmax(scores, dim=1)
-                # top_k_scores: [s, 1]
-                scores = top_k_scores.expand_as(scores) + scores  # [s, vocab_size]
-                # For the first step, all k points will have the same scores (since same k previous words, h, c)
-                if step == 1:
-                    top_k_scores, top_k_words = scores[0].topk(k, 0, True, True)  # (s)
-                else:
-                    # Unroll and find top scores, and their unrolled indices
-                    top_k_scores, top_k_words = scores.view(-1).topk(k, 0, True, True)  # (s)
-
-
-                # Convert unrolled indices to actual indices of scores
-                # prev_word_inds = top_k_words // vocab_size  # (s)
-                # if max(top_k_words)>vocab_size:
-                #     logger.info(">>>>>>>>>>>>>>>>>>")
-                prev_word_inds = torch.div(top_k_words, vocab_size, rounding_mode='floor')
-                next_word_inds = top_k_words % vocab_size  # (s)
-
-                # Add new words to sequences
-                seqs = torch.cat([seqs[prev_word_inds], next_word_inds.unsqueeze(1)], dim=1)  # (s, step+1)
-                # Which sequences are incomplete (didn't reach <end>)?
-                incomplete_inds = [ind for ind, next_word in enumerate(next_word_inds) if
-                                   next_word != word_map['<end>']]
-                complete_inds = list(set(range(len(next_word_inds))) - set(incomplete_inds))
-                # Set aside complete sequences
-                if len(complete_inds) > 0:
-                    Caption_End = True
-                    complete_seqs.extend(seqs[complete_inds].tolist())
-                    complete_seqs_scores.extend(top_k_scores[complete_inds])
-                k -= len(complete_inds)  # reduce beam length accordingly
-                # Proceed with incomplete sequences
-                if k == 0:
-                    break
-                seqs = seqs[incomplete_inds]
-                encoder_out = encoder_out[prev_word_inds[incomplete_inds]]
-                top_k_scores = top_k_scores[incomplete_inds].unsqueeze(1)
-                # Important: this will not work, since decoder has self-attention
-                # k_prev_words = next_word_inds[incomplete_inds].unsqueeze(1).repeat(k, 52)
-                k_prev_words = k_prev_words[incomplete_inds]
-                k_prev_words[:, :step + 1] = seqs  # [s, 52]
-                # k_prev_words[:, step] = next_word_inds[incomplete_inds]  # [s, 52]
-                # Break if things have been going on too long
-                if step > 50:
-                    break
-                step += 1
-
-            # choose the caption which has the best_score.
-            if (len(complete_seqs_scores) == 0):
+            # Add new words to sequences
+            seqs = torch.cat([seqs[prev_word_inds], next_word_inds.unsqueeze(1)], dim=1)  # (s, step+1)
+            # Which sequences are incomplete (didn't reach <end>)?
+            incomplete_inds = [ind for ind, next_word in enumerate(next_word_inds) if
+                                next_word != word_map['<end>']]
+            complete_inds = list(set(range(len(next_word_inds))) - set(incomplete_inds))
+            # Set aside complete sequences
+            if len(complete_inds) > 0:
+                Caption_End = True
                 complete_seqs.extend(seqs[complete_inds].tolist())
                 complete_seqs_scores.extend(top_k_scores[complete_inds])
-            if (len(complete_seqs_scores) > 0):
-                assert Caption_End
-                indices = complete_seqs_scores.index(max(complete_seqs_scores))
-                seq = complete_seqs[indices]
-                # References
-                img_caps = allcaps[0].tolist()
-                img_captions = list(
-                    map(lambda c: [w for w in c if w not in {word_map['<start>'], word_map['<end>'], word_map['<pad>']}],
-                        img_caps))  # remove <start> and pads
+            k -= len(complete_inds)  # reduce beam length accordingly
+            # Proceed with incomplete sequences
+            if k == 0:
+                break
+            seqs = seqs[incomplete_inds]
+            encoder_out = encoder_out[prev_word_inds[incomplete_inds]]
+            top_k_scores = top_k_scores[incomplete_inds].unsqueeze(1)
+            # Important: this will not work, since decoder has self-attention
+            # k_prev_words = next_word_inds[incomplete_inds].unsqueeze(1).repeat(k, 52)
+            k_prev_words = k_prev_words[incomplete_inds]
+            k_prev_words[:, :step + 1] = seqs  # [s, 52]
+            # k_prev_words[:, step] = next_word_inds[incomplete_inds]  # [s, 52]
+            # Break if things have been going on too long
+            if step > 50:
+                break
+            step += 1
 
-                references.append(img_captions)
-                # Hypotheses
-                new_sent = [w for w in seq if w not in {word_map['<start>'], word_map['<end>'], word_map['<pad>']}]
-                hypotheses.append(new_sent)
-                assert len(references) == len(hypotheses)
+        # choose the caption which has the best_score.
+        if (len(complete_seqs_scores) == 0):
+            complete_seqs.extend(seqs[complete_inds].tolist())
+            complete_seqs_scores.extend(top_k_scores[complete_inds])
+        if (len(complete_seqs_scores) > 0):
+            assert Caption_End
+            indices = complete_seqs_scores.index(max(complete_seqs_scores))
+            seq = complete_seqs[indices]
+            # References
+            img_caps = allcaps[0].tolist()
+            img_captions = list(
+                map(lambda c: [w for w in c if w not in {word_map['<start>'], word_map['<end>'], word_map['<pad>']}],
+                    img_caps))  # remove <start> and pads
 
-                # # 判断有没有变化
-                nochange_list = ["the scene is the same as before ", "there is no difference ",
-                                 "the two scenes seem identical ", "no change has occurred ",
-                                 "almost nothing has changed "]
-                ref_sentence = img_captions[1]
-                ref_line_repo = ""
-                for ref_word_idx in ref_sentence:
-                    ref_word = get_key(word_map, ref_word_idx)
-                    ref_line_repo += ref_word[0] + " "
+            references.append(img_captions)
+            # Hypotheses
+            new_sent = [w for w in seq if w not in {word_map['<start>'], word_map['<end>'], word_map['<pad>']}]
+            hypotheses.append(new_sent)
+            assert len(references) == len(hypotheses)
 
-                hyp_sentence = new_sent
-                hyp_line_repo = ""
-                for hyp_word_idx in hyp_sentence:
-                    hyp_word = get_key(word_map, hyp_word_idx)
-                    hyp_line_repo += hyp_word[0] + " "
-                # 对于变化图像对
-                if ref_line_repo not in nochange_list:
-                    change_references.append(img_captions)
-                    change_hypotheses.append(new_sent)
-                    if hyp_line_repo not in nochange_list:
-                        change_acc = change_acc+1
-                else:
-                    nochange_references.append(img_captions)
-                    nochange_hypotheses.append(new_sent)
-                    if hyp_line_repo in nochange_list:
-                        nochange_acc = nochange_acc+1
+            # # 判断有没有变化
+            nochange_list = ["the scene is the same as before ", "there is no difference ",
+                                "the two scenes seem identical ", "no change has occurred ",
+                                "almost nothing has changed "]
+            ref_sentence = img_captions[1]
+            ref_line_repo = ""
+            for ref_word_idx in ref_sentence:
+                ref_word = get_key(word_map, ref_word_idx)
+                ref_line_repo += ref_word[0] + " "
+
+            hyp_sentence = new_sent
+            hyp_line_repo = ""
+            for hyp_word_idx in hyp_sentence:
+                hyp_word = get_key(word_map, hyp_word_idx)
+                hyp_line_repo += hyp_word[0] + " "
+            # 对于变化图像对
+            if ref_line_repo not in nochange_list:
+                change_references.append(img_captions)
+                change_hypotheses.append(new_sent)
+                if hyp_line_repo not in nochange_list:
+                    change_acc = change_acc+1
+            else:
+                nochange_references.append(img_captions)
+                nochange_hypotheses.append(new_sent)
+                if hyp_line_repo in nochange_list:
+                    nochange_acc = nochange_acc+1
 
     return hypotheses, references
 
