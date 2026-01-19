@@ -14,7 +14,11 @@ from classes import *
 import logging
 import torch.backends.cudnn as cudnn
 from models import MCCFormers_diff_as_Q, DecoderTransformer, CNN_Encoder
+import random
+from itertools import islice
 
+import matplotlib.pyplot as plt
+import numpy as np
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -165,8 +169,22 @@ def evaluate_transformer_caption(
                                 std=[0.26862954, 0.26130258, 0.27577711], 
                                 device=device)
         # -----------------------------------------------
+        num_batches = len(loader)
 
-        (img_pairs, caps, caplens, allcaps) = (tqdm(loader, desc=args.Split + " EVALUATING AT BEAM SIZE " + str(beam_size)))
+        # 2. 0 ile toplam_sayı arasında rastgele bir index seç
+        random_index = random.randint(0, num_batches - 1)
+
+        print(f"{random_index}. sıradaki batch seçiliyor...")
+
+        # 3. O index'e gidip batch'i çek (islice o noktaya kadar iterate eder)
+        random_batch = next(islice(loader, random_index, None))
+
+        # 4. Senin veri yapına göre unpack et
+        img_pairs, caps, caplens, allcaps = random_batch
+
+        # Kontrol
+        print("Seçilen Caption:", caps[0])
+        print("Batch Index:", random_index)
         # 5 image is the same when "shuffle=False" of the dataloader
         # if i>10:
         #     break
@@ -384,6 +402,63 @@ def evaluate_transformer_caption(
                 nochange_hypotheses.append(new_sent)
                 if hyp_line_repo in nochange_list:
                     nochange_acc = nochange_acc+1
+
+            # --- GÖRÜNTÜ KAYDETME KODU BAŞLANGICI ---
+        
+        
+        # Tensörleri al (Batch size 1 olduğu için 0. index)
+        img_A_tensor = img_pairs[0, 0].cpu()
+        img_B_tensor = img_pairs[0, 1].cpu()
+
+
+        # Figür oluştur
+        fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+
+        img_A_tensor = img_A_tensor.permute(1, 2, 0).numpy()
+            # Görüntü normalize edilmişse veya değerleri garipe, 0-1 arasına çek
+        img_A_tensor = (img_A_tensor - img_A_tensor.min()) / (img_A_tensor.max() - img_A_tensor.min())
+
+
+        img_B_tensor = img_B_tensor.permute(1, 2, 0).numpy()
+            # Görüntü normalize edilmişse veya değerleri garipe, 0-1 arasına çek
+        img_B_tensor = (img_B_tensor - img_B_tensor.min()) / (img_B_tensor.max() - img_B_tensor.min())
+        
+        # Resimleri hazırla ve çiz
+        axes[0].imshow(img_A_tensor)
+
+        axes[0].set_title("Image A (Before)")
+        axes[0].axis('off')
+
+        axes[1].imshow(img_B_tensor)
+        axes[1].set_title("Image B (After)")
+        axes[1].axis('off')
+
+        # Caption'ı (Ground Truth) okunabilir hale getirip başlığa ekleyelim
+        # word_map ve rev_word_map'in yukarıda tanımlı olduğunu varsayıyoruz
+        # allcaps[0][0] -> Batch'in ilk elemanının ilk caption referansı
+        current_caption_indices = allcaps[0][0].tolist()
+        
+        # ID'leri kelimeye çevir (<start>, <end>, <pad> hariç)
+        decoded_words = []
+        for idx in current_caption_indices:
+            word = rev_word_map.get(idx, '') # rev_word_map yoksa word_map ters çevrilmeli
+            if word not in {'<start>', '<end>', '<pad>', ''}:
+                decoded_words.append(word)
+        
+        caption_text = " ".join(decoded_words)
+        
+        # Başlığı yaz ve dosyayı kaydet
+        plt.suptitle(f"Index: {random_index}\nGT: {caption_text}", fontsize=12)
+        
+        filename = f"batch_sample_{random_index}.png"
+        plt.savefig(filename, bbox_inches='tight')
+        plt.close(fig) # Figürü kapatarak belleği temizle
+        
+        print(f"✅ Görüntü başarıyla kaydedildi: {filename}")
+        # --- GÖRÜNTÜ KAYDETME KODU BİTİŞİ ---
+
+        # Kontrol
+        print("Seçilen Caption (Tensor):", caps[0])
 
     return hypotheses, references
 
