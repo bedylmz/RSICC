@@ -70,6 +70,8 @@ def save_captions(args, word_map, hypotheses, references, logger):
     logger.info(result_json_file)
     logger.info(reference_json_file)
 
+    return result_json_file, reference_json_file
+
 def get_key(dict_, value):
   return [k for k, v in dict_.items() if v == value]
 
@@ -412,55 +414,18 @@ def evaluate_transformer_caption(
 
 
         # Figür oluştur
-        fig, axes = plt.subplots(1, 2, figsize=(12, 6))
 
         img_A_tensor = img_A_tensor.permute(1, 2, 0).numpy()
-            # Görüntü normalize edilmişse veya değerleri garipe, 0-1 arasına çek
+        # Görüntü normalize edilmişse veya değerleri garipe, 0-1 arasına çek
         img_A_tensor = (img_A_tensor - img_A_tensor.min()) / (img_A_tensor.max() - img_A_tensor.min())
 
 
         img_B_tensor = img_B_tensor.permute(1, 2, 0).numpy()
-            # Görüntü normalize edilmişse veya değerleri garipe, 0-1 arasına çek
+        # Görüntü normalize edilmişse veya değerleri garipe, 0-1 arasına çek
         img_B_tensor = (img_B_tensor - img_B_tensor.min()) / (img_B_tensor.max() - img_B_tensor.min())
         
-        # Resimleri hazırla ve çiz
-        axes[0].imshow(img_A_tensor)
 
-        axes[0].set_title("Image A (Before)")
-        axes[0].axis('off')
-
-        axes[1].imshow(img_B_tensor)
-        axes[1].set_title("Image B (After)")
-        axes[1].axis('off')
-
-        # Caption'ı (Ground Truth) okunabilir hale getirip başlığa ekleyelim
-        # word_map ve rev_word_map'in yukarıda tanımlı olduğunu varsayıyoruz
-        # allcaps[0][0] -> Batch'in ilk elemanının ilk caption referansı
-        current_caption_indices = allcaps[0][0].tolist()
-        
-        # ID'leri kelimeye çevir (<start>, <end>, <pad> hariç)
-        decoded_words = []
-        for idx in current_caption_indices:
-            word = rev_word_map.get(idx, '') # rev_word_map yoksa word_map ters çevrilmeli
-            if word not in {'<start>', '<end>', '<pad>', ''}:
-                decoded_words.append(word)
-        
-        caption_text = " ".join(decoded_words)
-        
-        # Başlığı yaz ve dosyayı kaydet
-        plt.suptitle(f"Index: {random_index}\nGT: {caption_text}", fontsize=12)
-        
-        filename = f"batch_sample_{random_index}.png"
-        plt.savefig(filename, bbox_inches='tight')
-        plt.close(fig) # Figürü kapatarak belleği temizle
-        
-        print(f"✅ Görüntü başarıyla kaydedildi: {filename}")
-        # --- GÖRÜNTÜ KAYDETME KODU BİTİŞİ ---
-
-        # Kontrol
-        print("Seçilen Caption (Tensor):", caps[0])
-
-    return hypotheses, references
+    return hypotheses, references, img_A_tensor, img_B_tensor, random_index
 
 def evaluate_transformer(
         args: argparse.Namespace = None,
@@ -970,7 +935,7 @@ def main(args):
     if(args.eval_caption):
         if(args.dual_branch):
             if(args.gate):
-                hypotheses, references = evaluate_transformer_caption(
+                hypotheses, references, img_A_tensor, img_B_tensor, random_index = evaluate_transformer_caption(
                         args, 
                         encoder_image=encoder_image, 
                         clip_encoder_image=clip_encoder_image, 
@@ -982,7 +947,7 @@ def main(args):
                         logger=logger,
                         )
             else:
-                hypotheses, references = evaluate_transformer_caption(
+                hypotheses, references, img_A_tensor, img_B_tensor, random_index = evaluate_transformer_caption(
                         args, 
                         encoder_image=encoder_image, 
                         clip_encoder_image=clip_encoder_image, 
@@ -993,7 +958,7 @@ def main(args):
                         logger=logger,
                         )
         elif(args.eval_just_RSICC):
-                hypotheses, references = evaluate_transformer_caption(
+                hypotheses, references, img_A_tensor, img_B_tensor, random_index = evaluate_transformer_caption(
                         args, 
                         encoder_image=encoder_image, 
                         encoder_feat=encoder_feat,
@@ -1001,15 +966,39 @@ def main(args):
                         logger=logger,
                         )
         else:
-            hypotheses, references = evaluate_transformer_caption(
+            hypotheses, references, img_A_tensor, img_B_tensor, random_index = evaluate_transformer_caption(
                 args, 
                 clip_encoder_image=clip_encoder_image, 
                 encoder_feat=encoder_feat,
                 decoder=decoder,
                 adaptLayerClip=adaptLayerClip,
                 logger=logger)
-        save_captions(args, word_map, hypotheses, references, logger)
-    
+            
+        result_json, references_json = save_captions(args, word_map, hypotheses, references, logger)
+        
+        fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+
+        # Resimleri hazırla ve çiz
+        axes[0].imshow(img_A_tensor)
+        axes[0].set_title("Image A (Before)")
+        axes[0].axis('off')
+
+        axes[1].imshow(img_B_tensor)
+        axes[1].set_title("Image B (After)")
+        axes[1].axis('off')
+
+
+
+        # Başlığı yaz ve dosyayı kaydet
+        plt.suptitle(f"GT: {references_json["0"][0]} \nGuess: {result_json["0"][0]}", fontsize=12)
+        
+        filename = f"batch_sample_{random_index}.png"
+        plt.savefig(filename, bbox_inches='tight')
+        plt.close(fig) # Figürü kapatarak belleği temizle
+        
+        print(f"✅ Görüntü başarıyla kaydedildi: {filename}")
+        # --- GÖRÜNTÜ KAYDETME KODU BİTİŞİ ---
+
     else:
 
         if(args.dual_branch):
