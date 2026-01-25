@@ -259,7 +259,21 @@ def main(args):
     #---------------------------- CAPTION EVAL SECTION ----------------------------
     print(f"Loading checkpoint from {args.checkpoint_path}")
     checkpoint = torch.load(args.checkpoint_path, map_location=str(device))
-    
+
+
+    raw_state_dict = checkpoint['clip_encoder_image']
+    clip_state_dict = {}
+    for k, v in raw_state_dict.items():
+        if "clip_model.clip." in k:
+            new_key = k.rsplit("clip_model.clip.", 1)[1] 
+            if "visual" in new_key:
+                new_key = new_key.rsplit("visual.", 1)[1]
+                print(new_key)
+            # else:
+            #     print(new_key) 
+
+            # clip_state_dict[new_key] = v
+
     
     if 'encoder_feat' in checkpoint:
         encoder_feat.load_state_dict(checkpoint['encoder_feat'])
@@ -267,7 +281,6 @@ def main(args):
     if 'decoder' in checkpoint:
         decoder.load_state_dict(checkpoint['decoder'])
    
-     
     if 'adaptLayerClip' in checkpoint:
         adaptLayerClip.load_state_dict(checkpoint['adaptLayerClip'])
 
