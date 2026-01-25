@@ -852,7 +852,6 @@ def main(args):
             clip_model=clip_model_ref, 
             clip_tokenizer=clip_tokenizer, 
             rsicc_word_map=word_map,
-            logger=logger,
         )
     #------------------------ TEXT ENCODER ENTEGRASYONU ----------------
 
