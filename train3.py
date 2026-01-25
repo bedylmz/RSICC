@@ -274,7 +274,6 @@ def main(args):
                 new_key = k.rsplit("visual.", 1)[1]
             elif (isFirst):
                 continue
-            print(new_key)
             # else:
             #     print(new_key) 
 
