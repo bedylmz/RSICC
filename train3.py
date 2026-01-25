@@ -1025,14 +1025,23 @@ def main(args):
         raw_state_dict = checkpoint['clip_encoder_image']
         new_state_dict = {}
 
+        print("Ağırlıklar dönüştürülüyor...")
+        
         for k, v in raw_state_dict.items():
-            # Prefix'leri sırasıyla temizle
-            new_key = k
-            if new_key.startswith("clip_model.clip.visual."):
-                new_key = new_key.replace("clip_model.clip.visual.", "")
-            elif new_key.startswith("visual_encoder."):
-                new_key = new_key.replace("visual_encoder.", "")
-            new_state_dict[new_key] = v
+            # 1. ADIM: Sadece 'visual' içeren (görsel encoder) parametrelerini al
+            # Metin encoder'ına ait (logit_scale, text_projection vs) çöpleri atla.
+            if "visual" in k:
+                
+                # 2. ADIM: 'visual.' kelimesinden sonrasını al
+                # Bu yöntem prefix ne olursa olsun (clip_model.clip.visual veya visual_encoder) çalışır.
+                try:
+                    # Sağdan bölerek en son 'visual.' parçasından sonrasını alırız
+                    # Örnek: 'clip_model.clip.visual.transformer.resblocks.0...' -> 'transformer.resblocks.0...'
+                    new_key = k.rsplit("visual.", 1)[1] 
+                    new_state_dict[new_key] = v
+                except IndexError:
+                    # İçinde visual geçiyor ama '.' yoksa güvenli geç
+                    continue
 
 
         if 'encoder_image' in checkpoint:
