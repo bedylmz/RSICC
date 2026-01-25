@@ -1081,10 +1081,7 @@ def main(args):
     else:
         print(f"Loading checkpoint from {args.checkpoint_path}")
         checkpoint = torch.load(args.checkpoint_path, map_location=str(device))
-        
-        if 'encoder_image' in checkpoint:
-            encoder_image.load_state_dict(checkpoint['encoder_image'])
-        
+    
         if 'encoder_feat' in checkpoint:
             encoder_feat.load_state_dict(checkpoint['encoder_feat'])
             
