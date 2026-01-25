@@ -263,16 +263,22 @@ def main(args):
 
     raw_state_dict = checkpoint['clip_encoder_image']
     clip_state_dict = {}
+    isFirst = 0
     for k, v in raw_state_dict.items():
         if "clip_model.clip." in k:
-            new_key = k.rsplit("clip_model.clip.", 1)[1] 
-            if "visual" in new_key:
-                new_key = new_key.rsplit("visual.", 1)[1]
-                print(new_key)
+            new_key = k.rsplit("clip_model.clip.", 1)[1]
+            if "text_projection" in new_key or "logit_scale" in new_key :
+                continue
+            if "visual." in new_key:
+                isFirst = 1
+                new_key = k.rsplit("visual.", 1)[1]
+            elif (isFirst):
+                continue
+            print(new_key)
             # else:
             #     print(new_key) 
 
-            # clip_state_dict[new_key] = v
+            clip_state_dict[new_key] = v
 
     
     if 'encoder_feat' in checkpoint:
@@ -286,7 +292,7 @@ def main(args):
 
     # Check for CLIP specifically
     if 'clip_encoder_image' in checkpoint:
-        clip_encoder_image.load_state_dict(checkpoint['clip_encoder_image'])
+        clip_encoder_image.load_state_dict(clip_state_dict)
     else:
         print("WARNING: 'clip_encoder_image' weights not found in checkpoint. Using initialized weights.")
 
