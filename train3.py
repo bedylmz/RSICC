@@ -1026,12 +1026,12 @@ def main(args):
         state_dict = checkpoint['clip_encoder_image']
         new_state_dict = {}
 
-        for k, v in state_dict.items():
+        for k, v in checkpoint['clip_encoder_image'].items():
             # Eğer isim 'clip_model.clip.visual.' ile başlıyorsa bu kısmı sil
             name = k.replace("clip_model.clip.visual.", "") 
             # Veya 'visual_encoder.' kısmını sil
             name = name.replace("visual_encoder.", "")
-            new_state_dict[name] = v
+            checkpoint[name] = v
 
 
         if 'encoder_image' in checkpoint:
