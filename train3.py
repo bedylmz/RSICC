@@ -20,8 +20,8 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 from models import MCCFormers_diff_as_Q, DecoderTransformer, CNN_Encoder
 from datasets import CaptionDataset
-from utils1 import AverageMeter, adjust_learning_rate, bridge_embeddings_and_transfer, accuracy
-from eval1 import evaluate_transformer
+from utils3 import AverageMeter, adjust_learning_rate, bridge_embeddings_and_transfer, accuracy
+from eval3 import evaluate_transformer
 
 from CLIP_modules.modeling import CLIP4IDC
 from CLIP_modules.file_utils import PYTORCH_PRETRAINED_BERT_CACHE
@@ -1347,76 +1347,21 @@ def evaluate_transformer_caption(
         imgs_A = img_pairs[:, 0, :, :, :]
         imgs_B = img_pairs[:, 1, :, :, :]
 
-        if(args.dual_branch == True ):
-            b, t, c, h, w = img_pairs.shape
-            imgs_full = img_pairs.view(-1, c, h, w) 
-            imgs_full_clip = norm_clip(imgs_full) # CLIP için normalize et
+        b, t, c, h, w = img_pairs.shape
+        imgs_full = img_pairs.view(-1, c, h, w) 
+        imgs_full_clip = norm_clip(imgs_full)
+        # 2. Pass the flattened pairs and set frames to 2
+        # Note: Remove parentheses from .shape (it is a property, not a function)
+        clip_out = clip_encoder_image(imgs_full_clip, 2)
+        clip_out_A = clip_out[:,0,:] # 768 100 b
+        clip_out_B = clip_out[:,50,:]
+        clip_out_A = adaptLayerClip(clip_out_A)
+        clip_out_B = adaptLayerClip(clip_out_B)
 
-            # 2. Pass the flattened pairs and set frames to 2
-            # Note: Remove parentheses from .shape (it is a property, not a function)
-            clip_out = clip_encoder_image(imgs_full_clip, 2)
-            clip_out_A = clip_out[:,0,:] # 768 100 b
-            clip_out_B = clip_out[:,50,:]
-
-            imgs_A_resnet = norm_resnet(imgs_A) # ResNet için normalize et
-            imgs_B_resnet = norm_resnet(imgs_B)
-            
-            resnet_A = encoder_image(imgs_A_resnet)
-            resnet_B = encoder_image(imgs_B_resnet)
-            
-
-            resnet_A_adapt, clip_A_adapt = adaptLayer(resnet_A, clip_out_A)
-            resnet_B_adapt, clip_B_adapt = adaptLayer(resnet_B, clip_out_B)
-
-
-            resnet_A_normed, clip_A_normed = layerNormalizeLayer(resnet_A_adapt, clip_A_adapt)
-            resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B_adapt, clip_B_adapt)
-
-            # train fonksiyonu içinde (satır 194 civarı)
-            # Girdi: [Batch, 512, 14, 14]
-            if(args.gate ==True):
-                # 1. Kanalı sona alıp düzleştirin: [Batch, 196, 512]
-                b, c, h, w = resnet_A_normed.shape
-                resnet_A_flat = resnet_A_normed.permute(0, 2, 3, 1).view(b, h*w, c) 
-
-                # 2. Attention uygulayın (Çıktı yine [Batch, 196, 512] olacak)
-                resnet_A_att, _ = gateSelf(resnet_A_flat)
-
-                # 3. Tekrar [Batch, 512, 14, 14] formatına dönün (Concat için gerekli)
-                resnet_A_normed = resnet_A_att.view(b, h, w, c).permute(0, 3, 1, 2)
-
-                b, c, h, w = resnet_B_normed.shape
-                resnet_B_flat = resnet_B_normed.permute(0, 2, 3, 1).view(b, h*w, c) 
-
-                # 2. Attention uygulayın (Çıktı yine [Batch, 196, 512] olacak)
-                resnet_B_att, _ = gateSelf(resnet_B_flat)
-
-                # 3. Tekrar [Batch, 512, 14, 14] formatına dönün (Concat için gerekli)
-                resnet_B_normed = resnet_B_att.view(b, h, w, c).permute(0, 3, 1, 2)
-
-            final_A = torch.cat([resnet_A_normed, clip_A_normed], dim=1)
-            final_B = torch.cat([resnet_B_normed, clip_B_normed], dim=1)
-
-            encoder_out = encoder_feat(
-                final_A,
-                final_B,
-            ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
-        else:
-            b, t, c, h, w = img_pairs.shape
-            imgs_full = img_pairs.view(-1, c, h, w) 
-            imgs_full_clip = norm_clip(imgs_full)
-            # 2. Pass the flattened pairs and set frames to 2
-            # Note: Remove parentheses from .shape (it is a property, not a function)
-            clip_out = clip_encoder_image(imgs_full_clip, 2)
-            clip_out_A = clip_out[:,0,:] # 768 100 b
-            clip_out_B = clip_out[:,50,:]
-            clip_out_A = adaptLayerClip(clip_out_A)
-            clip_out_B = adaptLayerClip(clip_out_B)
-
-            encoder_out = encoder_feat(
-                clip_out_A,
-                clip_out_B,
-            ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
+        encoder_out = encoder_feat(
+            clip_out_A,
+            clip_out_B,
+        ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
 
         tgt = torch.zeros(52, k).to(device).to(torch.int64)
         tgt_length = tgt.size(0)
