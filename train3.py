@@ -1107,6 +1107,9 @@ def main(args):
     
         if 'encoder_feat' in checkpoint:
             encoder_feat.load_state_dict(checkpoint['encoder_feat'])
+
+        if 'encoder_image' in checkpoint:
+            encoder_feat.load_state_dict(checkpoint['encoder_image'])
             
         if 'decoder' in checkpoint:
             decoder.load_state_dict(checkpoint['decoder'])
@@ -1125,6 +1128,8 @@ def main(args):
 
         # Check for CLIP specifically
         if 'clip_encoder_image' in checkpoint:
+            for k, v in checkpoint['clip_encoder_image'].items:
+                print(clip_encoder_image[k])
             clip_encoder_image.load_state_dict(checkpoint['clip_encoder_image'])
         else:
             print("WARNING: 'clip_encoder_image' weights not found in checkpoint. Using initialized weights.")
