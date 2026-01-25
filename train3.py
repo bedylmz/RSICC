@@ -1022,16 +1022,17 @@ def main(args):
         print(f"Loading checkpoint from {args.checkpoint_path}")
         checkpoint = torch.load(args.checkpoint_path, map_location=str(device))
 
-
-        state_dict = checkpoint['clip_encoder_image']
+        raw_state_dict = checkpoint['clip_encoder_image']
         new_state_dict = {}
 
-        for k, v in checkpoint['clip_encoder_image'].items():
-            # Eğer isim 'clip_model.clip.visual.' ile başlıyorsa bu kısmı sil
-            name = k.replace("clip_model.clip.visual.", "") 
-            # Veya 'visual_encoder.' kısmını sil
-            name = name.replace("visual_encoder.", "")
-            checkpoint[name] = v
+        for k, v in raw_state_dict.items():
+            # Prefix'leri sırasıyla temizle
+            new_key = k
+            if new_key.startswith("clip_model.clip.visual."):
+                new_key = new_key.replace("clip_model.clip.visual.", "")
+            elif new_key.startswith("visual_encoder."):
+                new_key = new_key.replace("visual_encoder.", "")
+            new_state_dict[new_key] = v
 
 
         if 'encoder_image' in checkpoint:
@@ -1057,7 +1058,7 @@ def main(args):
 
         # Check for CLIP specifically
         if 'clip_encoder_image' in checkpoint:
-            clip_encoder_image.load_state_dict(checkpoint['clip_encoder_image'])
+            clip_encoder_image.load_state_dict(new_state_dict)
         else:
             print("WARNING: 'clip_encoder_image' weights not found in checkpoint. Using initialized weights.")
         if(args.dual_branch == True):
