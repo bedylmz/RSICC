@@ -769,6 +769,7 @@ def main(args):
         filename = os.listdir(args.checkpoint)
         checkpoint_path = os.path.join(args.checkpoint, filename[0])
         checkpoint = torch.load(checkpoint_path, map_location=str(device))
+        
 
     if(args.dual_branch == True):
         encoder_image_lr_scheduler = (
@@ -1020,7 +1021,19 @@ def main(args):
     elif args.eval_mode == True and args.eval_caption == False:
         print(f"Loading checkpoint from {args.checkpoint_path}")
         checkpoint = torch.load(args.checkpoint_path, map_location=str(device))
-        
+
+
+        state_dict = checkpoint['clip_encoder_image']
+        new_state_dict = {}
+
+        for k, v in state_dict.items():
+            # Eğer isim 'clip_model.clip.visual.' ile başlıyorsa bu kısmı sil
+            name = k.replace("clip_model.clip.visual.", "") 
+            # Veya 'visual_encoder.' kısmını sil
+            name = name.replace("visual_encoder.", "")
+            new_state_dict[name] = v
+
+
         if 'encoder_image' in checkpoint:
             encoder_image.load_state_dict(checkpoint['encoder_image'])
         
