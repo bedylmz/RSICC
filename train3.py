@@ -665,6 +665,9 @@ def validate_loss(val_loader, encoder_image, clip_encoder_image, encoder_feat, d
 
 
 def main(args):
+    global logger 
+    logger = get_logger(os.path.join(args.save_model_path, "log.txt"))
+    logger.info(f"Kullanılan Random Seed: {seed}") # İleride gerekirse tekrar üretmek için
     print(args)
     global metrics_list
     print(time.strftime("%m-%d  %H : %M : %S", time.localtime(time.time())))
@@ -710,8 +713,6 @@ def main(args):
         
     
     # ------------------------------ CLIP ENTEGRASYONU ------------------------------
-    
-    
 
     # Initialize
     # Encoder
@@ -730,7 +731,6 @@ def main(args):
             n_head=args.n_heads,
             n_layers=args.n_layers,
         )
-
 
     # Decoder
     args.feature_dim_de = 1024 # 当有concat是1024,否则为512
@@ -836,7 +836,8 @@ def main(args):
             rsicc_decoder=decoder, 
             clip_model=clip_model_ref, 
             clip_tokenizer=clip_tokenizer, 
-            rsicc_word_map=word_map
+            rsicc_word_map=word_map,
+            logger=logger,
         )
     #------------------------ TEXT ENCODER ENTEGRASYONU ----------------
 
