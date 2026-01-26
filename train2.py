@@ -1082,6 +1082,16 @@ def main(args):
     else:
         print(f"Loading checkpoint from {args.checkpoint_path}")
         checkpoint = torch.load(args.checkpoint_path, map_location=str(device))
+
+        raw_state_dict = checkpoint['clip_encoder_image']
+        clip_state_dict = {}
+        isFirst = 0
+        for k, v in raw_state_dict.items():
+            if "conv2.weight" in k:
+                continue
+
+            clip_state_dict[k] = v
+
         
         if 'encoder_image' in checkpoint:
             encoder_image.load_state_dict(checkpoint['encoder_image'])
@@ -1106,7 +1116,7 @@ def main(args):
 
         # Check for CLIP specifically
         if 'clip_encoder_image' in checkpoint:
-            clip_encoder_image.load_state_dict(checkpoint['clip_encoder_image'])
+            clip_encoder_image.load_state_dict(clip_state_dict)
         else:
             print("WARNING: 'clip_encoder_image' weights not found in checkpoint. Using initialized weights.")
 
