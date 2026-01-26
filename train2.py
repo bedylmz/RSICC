@@ -81,8 +81,8 @@ class CustomLayerNorm(nn.Module):
         # --- ADIM 5: Layer Norm Tanımları ---
         # LayerNorm'a sadece kanal sayısını veriyoruz (örneğin 512).
         # Bu, her pikseldeki (14x14) 512'lik vektörü kendi içinde normalize eder.
-        self.ln_resnet = nn.LayerNorm(common_dim)
-        self.ln_clip = nn.LayerNorm(common_dim)
+        self.ln_resnet = nn.LayerNorm(1024)
+        self.ln_clip = nn.LayerNorm(768)
 
     def forward(self, g_feat, c_feat):
         # Girdi Boyutları (4. Adımdan gelen): 
