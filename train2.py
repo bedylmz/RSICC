@@ -12,6 +12,7 @@ from torch.optim.lr_scheduler import StepLR
 import torch.nn.functional as F
 
 from tqdm import tqdm
+import math
 
 import random
 from itertools import islice
@@ -72,7 +73,7 @@ class CLIPVisualEncoder(nn.Module):
             param.requires_grad = False # veya True
 
 class CustomLayerNorm(nn.Module):
-    def __init__(self, common_dim=512):
+    def __init__(self, clip_dim=768, resnet_dim=1024):
         super().__init__()
         
         # --- ADIM 4 (Önceki adımın hazırlığı) ---
@@ -81,13 +82,13 @@ class CustomLayerNorm(nn.Module):
         # --- ADIM 5: Layer Norm Tanımları ---
         # LayerNorm'a sadece kanal sayısını veriyoruz (örneğin 512).
         # Bu, her pikseldeki (14x14) 512'lik vektörü kendi içinde normalize eder.
-        self.ln_resnet = nn.LayerNorm(1024)
-        self.ln_clip = nn.LayerNorm(768)
+        self.ln_resnet = nn.LayerNorm(resnet_dim)
+        self.ln_clip = nn.LayerNorm(clip_dim)
 
     def forward(self, g_feat, c_feat):
         # Girdi Boyutları (4. Adımdan gelen): 
-        # g_feat -> [Batch, 512, 14, 14]
-        # c_feat -> [Batch, 512, 14, 14]
+        # g_feat -> [Batch, 1024, 14, 14]
+        # c_feat -> [Batch, 49, 768] (Burada 49, 7x7 gridten gelmektedir)
 
         # --- ADIM 5 UYGULAMA ---
 
@@ -99,30 +100,21 @@ class CustomLayerNorm(nn.Module):
 
         # 2. CLIP Özellikleri için LayerNorm
         # Aynı işlem CLIP kolu için
-        c_feat = c_feat.permute(0, 2, 3, 1)
         c_feat = self.ln_clip(c_feat)
-        c_feat = c_feat.permute(0, 3, 1, 2)
 
         # Çıktılar şu an 6. Adım (Concat) için hazır.
         return g_feat, c_feat
 
 class AdaptLayer(nn.Module):
-    def __init__(self, target_dim=512):
+    def __init__(self, clip_dim=768, target_dim=512, target_size=14):
         super().__init__()
         
-        # --- Sizin Tanımladığınız Kısım (__init__) ---
+        self.target_size = target_size
+        self.projection_dim = nn.Conv2d(1792, 1024, kernel_size=1)
         
-        # 1. ResNet için Dönüşüm (1024 -> 512)
-        self.resnet_adapt = nn.Sequential(
-            nn.Conv2d(1024, target_dim, kernel_size=1),
-            nn.GELU()
-        )
-        
-        # 2. CLIP için Dönüşüm (768 -> 512)
-        self.clip_adapt = nn.Sequential(
-            nn.Conv2d(768, target_dim, kernel_size=1),
-            nn.GELU()
-        )
+        # Eğer CLIP çıktısı 7x7 ise (ViT-B/32), bunu 14x14'e büyütmek gerekebilir
+        self.upsample = nn.Upsample(size=(target_size, target_size), mode='bilinear', align_corners=False)
+
 
     def forward(self, resnet_feat, clip_vec):
         """
@@ -132,27 +124,34 @@ class AdaptLayer(nn.Module):
         
         # --- RESNET KOLU ---
         # ResNet zaten [B, C, H, W] formatında olduğu için doğrudan sokuyoruz.
-        # Girdi: [B, 2048, 14, 14] -> Çıktı: [B, 512, 14, 14]
-        g_feat = self.resnet_adapt(resnet_feat) 
+        # [B, 1024, 14, 14]
+        g_feat = resnet_feat 
         
         
         # --- CLIP KOLU (DİKKAT) ---
         # CLIP vektörü düz ([B, 768]) olduğu için Conv2d'ye girmeden önce
         # onu 4 boyutlu hale getirip genişletmeliyiz (3. Madde burada uygulanır).
 
-        # 1. Önce sadece boyut ekle: [B, 768, 1, 1]
-        clip_grid = clip_vec.view(clip_vec.size(0), clip_vec.size(1), 1, 1)
+        # [Batch, 49, 768]
+        # 2. Kare olup olmadığını kontrol edelim
+        b, seq, dim = clip_vec.shape
+        grid_size = int(math.sqrt(seq)) # 196 ise 14, 49 ise 7
+        
+        # 3. Sequence'ı Grid'e çevirme (Reshape & Permute)
+        # Önce: [Batch, Dim, Seq] -> [Batch, Dim, H, W]
+        clip_vec = clip_vec.permute(0, 2, 1)  # [Batch, 768, 49]
+        clip_vec = clip_vec.view(b, dim, grid_size, grid_size) # [Batch, 768, 7, 7] (veya 7x7)
+        
+        # [Batch, 768, 14, 14]
+        # 4. Eğer boyut 7x7 ise 14x14'e büyüt (ViT-B/32 kullanıyorsanız)
+        if grid_size != self.target_size:
+            clip_vec = self.upsample(clip_vec)
+        
+        final = torch.cat([g_feat, clip_vec], dim=1)
+        final = F.normalize(final, p=2, dim=1)
+        final = self.projection_dim(final)
 
-        # 2. ÖNCE PROJEKSİYON YAP (Sadece 1x1 üzerinde işlem yapıyoruz, çok hızlı)
-        # Girdi: [B, 768, 1, 1] -> Çıktı: [B, 512, 1, 1]
-        c_feat_1x1 = self.clip_adapt(clip_grid)
-        
-        # 3. EN SON GENİŞLET (Hesaplanmış sonucu kopyala)
-        # [B, 512, 1, 1] -> [B, 512, 14, 14]
-        H, W = g_feat.shape[2], g_feat.shape[3] # ResNet boyutlarına dinamik uyum sağlar
-        c_feat = c_feat_1x1.expand(-1, -1, H, W)
-        
-        return g_feat, c_feat
+        return final
 
 class AdaptLayerClip(nn.Module):
     def __init__(self, target_dim=1024):
@@ -210,7 +209,7 @@ class GatedSelfAttention(nn.Module):
 
         self.layer_norm = nn.LayerNorm(d_model)
 
-    def forward(self, x, mask=None):
+    def forward(self, clip_grid, mask=None):
         batch_size, seq_len, _ = x.shape
         
         # 1. Self-Attention Hesaplamaları
@@ -249,7 +248,7 @@ class GatedSelfAttention(nn.Module):
         output = self.layer_norm(x + gated_out)
         
         return output, attention
-    
+
 def train(
     args= None,
     train_loader= None,
@@ -1346,8 +1345,56 @@ def evaluate_transformer_caption(
         # Forward prop.
         imgs_A = img_pairs[:, 0, :, :, :]
         imgs_B = img_pairs[:, 1, :, :, :]
-
         if(args.dual_branch == True ):
+            b, t, c, h, w = img_pairs.shape
+            imgs_full = img_pairs.view(-1, c, h, w) 
+            imgs_full_clip = norm_clip(imgs_full) # CLIP için normalize et
+
+            # 2. Pass the flattened pairs and set frames to 2
+            # Note: Remove parentheses from .shape (it is a property, not a function)
+            clip_out = clip_encoder_image(imgs_full_clip, 2) # 768 100 b
+            clip_out_A = clip_out[:,1:50,:] # 768 1 b
+            clip_out_B = clip_out[:,51:,:]
+
+            imgs_A_resnet = norm_resnet(imgs_A) # ResNet için normalize et
+            imgs_B_resnet = norm_resnet(imgs_B)
+            
+            resnet_A = encoder_image(imgs_A_resnet)
+            resnet_B = encoder_image(imgs_B_resnet)
+
+            resnet_A_normed, clip_A_normed = layerNormalizeLayer(resnet_A, clip_out_A)
+            resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B, clip_out_B)          
+
+            final_A = adaptLayer(resnet_A_normed, clip_A_normed)
+            final_B = adaptLayer(resnet_B_normed, clip_B_normed)
+
+            # train fonksiyonu içinde (satır 194 civarı)
+            # Girdi: [Batch, 512, 14, 14]
+            if(args.gate ==True and 0 == 1):
+                # 1. Kanalı sona alıp düzleştirin: [Batch, 196, 512]
+                b, c, h, w = resnet_A_adapt.shape
+                resnet_A_flat = resnet_A_adapt.permute(0, 2, 3, 1).view(b, h*w, c) 
+
+                # 2. Attention uygulayın (Çıktı yine [Batch, 196, 512] olacak)
+                resnet_A_att, _ = gateSelf(resnet_A_flat)
+
+                # 3. Tekrar [Batch, 512, 14, 14] formatına dönün (Concat için gerekli)
+                resnet_A_adapt = resnet_A_att.view(b, h, w, c).permute(0, 3, 1, 2)
+
+                b, c, h, w = resnet_B_adapt.shape
+                resnet_B_flat = resnet_B_adapt.permute(0, 2, 3, 1).view(b, h*w, c) 
+
+                # 2. Attention uygulayın (Çıktı yine [Batch, 196, 512] olacak)
+                resnet_B_att, _ = gateSelf(resnet_B_flat)
+
+                # 3. Tekrar [Batch, 512, 14, 14] formatına dönün (Concat için gerekli)
+                resnet_B_adapt = resnet_B_att.view(b, h, w, c).permute(0, 3, 1, 2)
+
+            fused_feat = encoder_feat(
+                final_A,
+                final_B,
+            ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
+        elif(args.fusedclip):
             b, t, c, h, w = img_pairs.shape
             imgs_full = img_pairs.view(-1, c, h, w) 
             imgs_full_clip = norm_clip(imgs_full) # CLIP için normalize et
@@ -1358,49 +1405,30 @@ def evaluate_transformer_caption(
             clip_out_A = clip_out[:,0,:] # 768 100 b
             clip_out_B = clip_out[:,50,:]
 
+            clip_out_A = adaptLayerClip(clip_out_A)
+            clip_out_B = adaptLayerClip(clip_out_B)
+
+
             imgs_A_resnet = norm_resnet(imgs_A) # ResNet için normalize et
             imgs_B_resnet = norm_resnet(imgs_B)
             
             resnet_A = encoder_image(imgs_A_resnet)
             resnet_B = encoder_image(imgs_B_resnet)
-            
-
-            resnet_A_adapt, clip_A_adapt = adaptLayer(resnet_A, clip_out_A)
-            resnet_B_adapt, clip_B_adapt = adaptLayer(resnet_B, clip_out_B)
-
-
-            resnet_A_normed, clip_A_normed = layerNormalizeLayer(resnet_A_adapt, clip_A_adapt)
-            resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B_adapt, clip_B_adapt)
-
-            # train fonksiyonu içinde (satır 194 civarı)
-            # Girdi: [Batch, 512, 14, 14]
-            if(args.gate ==True):
-                # 1. Kanalı sona alıp düzleştirin: [Batch, 196, 512]
-                b, c, h, w = resnet_A_normed.shape
-                resnet_A_flat = resnet_A_normed.permute(0, 2, 3, 1).view(b, h*w, c) 
-
-                # 2. Attention uygulayın (Çıktı yine [Batch, 196, 512] olacak)
-                resnet_A_att, _ = gateSelf(resnet_A_flat)
-
-                # 3. Tekrar [Batch, 512, 14, 14] formatına dönün (Concat için gerekli)
-                resnet_A_normed = resnet_A_att.view(b, h, w, c).permute(0, 3, 1, 2)
-
-                b, c, h, w = resnet_B_normed.shape
-                resnet_B_flat = resnet_B_normed.permute(0, 2, 3, 1).view(b, h*w, c) 
-
-                # 2. Attention uygulayın (Çıktı yine [Batch, 196, 512] olacak)
-                resnet_B_att, _ = gateSelf(resnet_B_flat)
-
-                # 3. Tekrar [Batch, 512, 14, 14] formatına dönün (Concat için gerekli)
-                resnet_B_normed = resnet_B_att.view(b, h, w, c).permute(0, 3, 1, 2)
 
             final_A = torch.cat([resnet_A_normed, clip_A_normed], dim=1)
             final_B = torch.cat([resnet_B_normed, clip_B_normed], dim=1)
 
-            encoder_out = encoder_feat(
-                final_A,
-                final_B,
+            fused_feat = encoder_feat(
+                resnet_A,
+                resnet_B,
             ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
+
+            clip_out =  torch.cat([clip_out_A, clip_out_B], dim=1)
+            clip_out =  clip_out.permute(1,2,0)
+
+            fused_feat = torch.cat([fused_feat, clip_out], dim=1)
+
+            
         else:
             b, t, c, h, w = img_pairs.shape
             imgs_full = img_pairs.view(-1, c, h, w) 
@@ -1413,7 +1441,7 @@ def evaluate_transformer_caption(
             clip_out_A = adaptLayerClip(clip_out_A)
             clip_out_B = adaptLayerClip(clip_out_B)
 
-            encoder_out = encoder_feat(
+            fused_feat = encoder_feat(
                 clip_out_A,
                 clip_out_B,
             ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
