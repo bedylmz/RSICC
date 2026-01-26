@@ -36,6 +36,7 @@ import numpy as np
 import torch
 import torchvision.transforms.functional as F
 
+
 class BatchNormalize(torch.nn.Module):
     def __init__(self, mean, std, device):
         super().__init__()
@@ -106,7 +107,7 @@ class CustomLayerNorm(nn.Module):
         return g_feat, c_feat
 
 class AdaptLayer(nn.Module):
-    def __init__(self, clip_dim=768, target_dim=512, target_size=14):
+    def __init__(self, clip_dim=768, resnet_dim=1024, target_size=14):
         super().__init__()
         
         self.target_size = target_size
@@ -115,43 +116,59 @@ class AdaptLayer(nn.Module):
         # Eğer CLIP çıktısı 7x7 ise (ViT-B/32), bunu 14x14'e büyütmek gerekebilir
         self.upsample = nn.Upsample(size=(target_size, target_size), mode='bilinear', align_corners=False)
 
+        self.gate_fc = nn.Sequential(
+            nn.Linear(resnet_dim * 3, 100), # Before + After feature concat
+            nn.ReLU(),
+            nn.Linear(100, 1),
+            nn.Sigmoid() # 0 ile 1 arası çıktı verir
+        )
 
-    def forward(self, resnet_feat, clip_vec):
+    def forward(self, resnet_feat_before, resnet_feat_after, clip_feat_before, clip_feat_after):
         """
         resnet_feat: [Batch, 2048, 14, 14]
         clip_vec:    [Batch, 768] (Henüz 1x1 veya 14x14 değil)
         """
-        
-        # --- RESNET KOLU ---
-        # ResNet zaten [B, C, H, W] formatında olduğu için doğrudan sokuyoruz.
-        # [B, 1024, 14, 14]
-        g_feat = resnet_feat 
-        
-        
-        # --- CLIP KOLU (DİKKAT) ---
-        # CLIP vektörü düz ([B, 768]) olduğu için Conv2d'ye girmeden önce
-        # onu 4 boyutlu hale getirip genişletmeliyiz (3. Madde burada uygulanır).
 
         # [Batch, 49, 768]
         # 2. Kare olup olmadığını kontrol edelim
-        b, seq, dim = clip_vec.shape
+        b, seq, dim = clip_feat_after.shape
         grid_size = int(math.sqrt(seq)) # 196 ise 14, 49 ise 7
         
         # 3. Sequence'ı Grid'e çevirme (Reshape & Permute)
         # Önce: [Batch, Dim, Seq] -> [Batch, Dim, H, W]
-        clip_vec = clip_vec.permute(0, 2, 1)  # [Batch, 768, 49]
-        clip_vec = clip_vec.view(b, dim, grid_size, grid_size) # [Batch, 768, 7, 7] (veya 7x7)
-        
+        clip_feat_after = clip_feat_after.permute(0, 2, 1)  # [Batch, 768, 49]
+        clip_feat_after = clip_feat_after.view(b, dim, grid_size, grid_size) # [Batch, 768, 7, 7] (veya 7x7)
+        clip_feat_before = clip_feat_before.permute(0, 2, 1)  # [Batch, 768, 49]
+        clip_feat_before = clip_feat_before.view(b, dim, grid_size, grid_size) # [Batch, 768, 7, 7] (veya 7x7)
+
         # [Batch, 768, 14, 14]
         # 4. Eğer boyut 7x7 ise 14x14'e büyüt (ViT-B/32 kullanıyorsanız)
         if grid_size != self.target_size:
-            clip_vec = self.upsample(clip_vec)
-        
-        final = torch.cat([g_feat, clip_vec], dim=1)
-        final = F.normalize(final, p=2, dim=1)
-        final = self.projection_dim(final)
+            clip_feat_before = self.upsample(clip_feat_before)
+            clip_feat_after = self.upsample(clip_feat_after)
 
-        return final
+        resnet_diff = torch.abs(resnet_feat_before - resnet_feat_after)
+
+        # 3. GATE Mekanizması: Ne kadar değişim var?
+        # ResNet fark vektörüne bakarak bir "alpha" katsayısı üret
+        alpha = self.gate_fc(torch.cat([resnet_feat_before, resnet_feat_after, resnet_diff], dim=1))
+        # alpha output: [Batch, 1] -> Her görüntü için 0 (değişim yok) ile 1 (değişim var) arası.
+        
+        resnet_feat_before = (1-alpha) * resnet_feat_before
+        resnet_feat_after = (1-alpha) * resnet_feat_after
+        clip_feat_before = alpha * clip_feat_before
+        clip_feat_after = alpha * clip_feat_after
+
+        final_before = torch.cat([resnet_feat_before, clip_feat_before], dim=1)
+        final_after = torch.cat([resnet_feat_after, clip_feat_after], dim=1)
+
+        final_before = F.normalize(final_before, p=2, dim=1)
+        final_after = F.normalize(final_after, p=2, dim=1)
+
+        final_before = self.projection_dim(final_before)
+        final_before = self.projection_dim(final_after)
+
+        return final_before, final_after
 
 class AdaptLayerClip(nn.Module):
     def __init__(self, target_dim=1024):
@@ -1345,6 +1362,7 @@ def evaluate_transformer_caption(
         # Forward prop.
         imgs_A = img_pairs[:, 0, :, :, :]
         imgs_B = img_pairs[:, 1, :, :, :]
+
         if(args.dual_branch == True ):
             b, t, c, h, w = img_pairs.shape
             imgs_full = img_pairs.view(-1, c, h, w) 
@@ -1353,8 +1371,9 @@ def evaluate_transformer_caption(
             # 2. Pass the flattened pairs and set frames to 2
             # Note: Remove parentheses from .shape (it is a property, not a function)
             clip_out = clip_encoder_image(imgs_full_clip, 2) # 768 100 b
-            clip_out_A = clip_out[:,1:50,:] # 768 1 b
-            clip_out_B = clip_out[:,51:,:]
+            size = clip_out.size(1)//2
+            clip_out_A = clip_out[:,1:size,:] # 768 1 b
+            clip_out_B = clip_out[:,size+1:,:]
 
             imgs_A_resnet = norm_resnet(imgs_A) # ResNet için normalize et
             imgs_B_resnet = norm_resnet(imgs_B)
@@ -1365,8 +1384,7 @@ def evaluate_transformer_caption(
             resnet_A_normed, clip_A_normed = layerNormalizeLayer(resnet_A, clip_out_A)
             resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B, clip_out_B)          
 
-            final_A = adaptLayer(resnet_A_normed, clip_A_normed)
-            final_B = adaptLayer(resnet_B_normed, clip_B_normed)
+            final_A, final_B = adaptLayer(resnet_A_normed, clip_A_normed,resnet_B_normed, clip_B_normed)
 
             # train fonksiyonu içinde (satır 194 civarı)
             # Girdi: [Batch, 512, 14, 14]
@@ -1402,8 +1420,9 @@ def evaluate_transformer_caption(
             # 2. Pass the flattened pairs and set frames to 2
             # Note: Remove parentheses from .shape (it is a property, not a function)
             clip_out = clip_encoder_image(imgs_full_clip, 2)
-            clip_out_A = clip_out[:,0,:] # 768 100 b
-            clip_out_B = clip_out[:,50,:]
+            size = clip_out.size(1)//2
+            clip_out_A = clip_out[:,1:size,:] # 768 1 b
+            clip_out_B = clip_out[:,size+1:,:]
 
             clip_out_A = adaptLayerClip(clip_out_A)
             clip_out_B = adaptLayerClip(clip_out_B)
@@ -1427,7 +1446,6 @@ def evaluate_transformer_caption(
             clip_out =  clip_out.permute(1,2,0)
 
             fused_feat = torch.cat([fused_feat, clip_out], dim=1)
-
             
         else:
             b, t, c, h, w = img_pairs.shape
