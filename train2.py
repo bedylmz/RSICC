@@ -1082,16 +1082,6 @@ def main(args):
     else:
         print(f"Loading checkpoint from {args.checkpoint_path}")
         checkpoint = torch.load(args.checkpoint_path, map_location=str(device))
-
-        raw_state_dict = checkpoint['clip_encoder_image']
-        clip_state_dict = {}
-        isFirst = 0
-        for k, v in raw_state_dict.items():
-            if "conv2.weight" in k:
-                continue
-
-            clip_state_dict[k] = v
-
         
         if 'encoder_image' in checkpoint:
             encoder_image.load_state_dict(checkpoint['encoder_image'])
@@ -1116,7 +1106,7 @@ def main(args):
 
         # Check for CLIP specifically
         if 'clip_encoder_image' in checkpoint:
-            clip_encoder_image.load_state_dict(clip_state_dict)
+            clip_encoder_image.load_state_dict(checkpoint['clip_encoder_image'])
         else:
             print("WARNING: 'clip_encoder_image' weights not found in checkpoint. Using initialized weights.")
 
@@ -1335,7 +1325,6 @@ def evaluate_transformer_caption(
         from PIL import Image
 
         # 1. Load the image using Pillow
-        # 1. Load the image using Pillow
         if args.img_a and args.img_b:
             img0 = Image.open(args.img_a).convert('RGB')
             img1 = Image.open(args.img_b).convert('RGB')
@@ -1399,7 +1388,7 @@ def evaluate_transformer_caption(
             resnet_A_normed, clip_A_normed = layerNormalizeLayer(resnet_A, clip_out_A)
             resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B, clip_out_B)          
 
-            final_A, final_B = adaptLayer(resnet_A_normed, resnet_B_normed, clip_A_normed, clip_B_normed)
+            final_A, final_B = adaptLayer(resnet_A_normed, clip_A_normed,resnet_B_normed, clip_B_normed)
 
             # train fonksiyonu içinde (satır 194 civarı)
             # Girdi: [Batch, 512, 14, 14]
@@ -1683,7 +1672,6 @@ if __name__ == "__main__":
     parser.add_argument("--fine_tune_encoder", type=bool, default=True, help="whether fine-tune encoder or not")
     parser.add_argument("--checkpoint", default="None", help="path to checkpoint, None if none.")
 
-    
     parser.add_argument('--img_a', type=str, default=None, help='İlk resmin yolu')
     parser.add_argument('--img_b', type=str, default=None, help='İkinci resmin yolu')
     
@@ -1700,4 +1688,4 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     main(args)
-    
+   
