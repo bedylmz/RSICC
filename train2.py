@@ -178,7 +178,7 @@ class AdaptLayer(nn.Module):
         final_after = F.normalize(final_after, p=2, dim=1)
 
         final_before = self.projection_dim(final_before)
-        final_before = self.projection_dim(final_after)
+        final_after = self.projection_dim(final_after)
 
         return final_before, final_after
 
