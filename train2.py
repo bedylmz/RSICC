@@ -149,9 +149,19 @@ class AdaptLayer(nn.Module):
 
         resnet_diff = torch.abs(resnet_feat_before - resnet_feat_after)
 
+        res_pool_before = resnet_feat_before.mean([2, 3]) # [Batch, 1024]
+        res_pool_after = resnet_feat_after.mean([2, 3])   # [Batch, 1024]
+        
+        # Fark vektörü (Pooling sonrası hesaplanmalı)
+        res_diff_vec = torch.abs(res_pool_before - res_pool_after)
+
         # 3. GATE Mekanizması: Ne kadar değişim var?
         # ResNet fark vektörüne bakarak bir "alpha" katsayısı üret
-        alpha = self.gate_fc(torch.cat([resnet_feat_before, resnet_feat_after, resnet_diff], dim=1))
+        gate_input = torch.cat([res_pool_before, res_pool_after, res_diff_vec], dim=1) # [Batch, 3072]
+        alpha = self.gate_fc(gate_input)
+        # alpha output: [Batch, 1] -> Her görüntü için 0 (değişim yok) ile 1 (değişim var) arası.
+
+
         # alpha output: [Batch, 1] -> Her görüntü için 0 (değişim yok) ile 1 (değişim var) arası.
         
         resnet_feat_before = (1-alpha) * resnet_feat_before
