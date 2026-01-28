@@ -136,7 +136,6 @@ class AdaptLayer(nn.Module):
         
         # 3. Sequence'ı Grid'e çevirme (Reshape & Permute)
         # Önce: [Batch, Dim, Seq] -> [Batch, Dim, H, W]
-        print(clip_feat_before.shape)
         clip_feat_after = clip_feat_after.permute(0, 2, 1)  # [Batch, 768, 49]
         clip_feat_after = clip_feat_after.view(b, dim, grid_size, grid_size) # [Batch, 768, 7, 7] (veya 7x7)
         clip_feat_before = clip_feat_before.permute(0, 2, 1)  # [Batch, 768, 49]
@@ -148,19 +147,11 @@ class AdaptLayer(nn.Module):
             clip_feat_before = self.upsample(clip_feat_before)
             clip_feat_after = self.upsample(clip_feat_after)
 
-        res_pool_before = resnet_feat_before.mean([2, 3]) # [Batch, 1024]
-        res_pool_after = resnet_feat_after.mean([2, 3])   # [Batch, 1024]
-        
-        # Fark vektörü (Pooling sonrası hesaplanmalı)
-        res_diff_vec = torch.abs(res_pool_before - res_pool_after)
+        resnet_diff = torch.abs(resnet_feat_before - resnet_feat_after)
 
         # 3. GATE Mekanizması: Ne kadar değişim var?
         # ResNet fark vektörüne bakarak bir "alpha" katsayısı üret
-        gate_input = torch.cat([res_pool_before, res_pool_after, res_diff_vec], dim=1) # [Batch, 3072]
-        alpha = self.gate_fc(gate_input)
-        # alpha output: [Batch, 1] -> Her görüntü için 0 (değişim yok) ile 1 (değişim var) arası.
-
-        alpha = alpha.view(b, 1, 1, 1)
+        alpha = self.gate_fc(torch.cat([resnet_feat_before, resnet_feat_after, resnet_diff], dim=1))
         # alpha output: [Batch, 1] -> Her görüntü için 0 (değişim yok) ile 1 (değişim var) arası.
         
         resnet_feat_before = (1-alpha) * resnet_feat_before
@@ -171,13 +162,11 @@ class AdaptLayer(nn.Module):
         final_before = torch.cat([resnet_feat_before, clip_feat_before], dim=1)
         final_after = torch.cat([resnet_feat_after, clip_feat_after], dim=1)
 
-        import torch.nn.functional as F
-
         final_before = F.normalize(final_before, p=2, dim=1)
         final_after = F.normalize(final_after, p=2, dim=1)
 
         final_before = self.projection_dim(final_before)
-        final_after = self.projection_dim(final_after)
+        final_before = self.projection_dim(final_after)
 
         return final_before, final_after
 
@@ -276,7 +265,6 @@ class GatedSelfAttention(nn.Module):
         output = self.layer_norm(x + gated_out)
         
         return output, attention
-
 
 def train(
     args= None,
@@ -1347,8 +1335,13 @@ def evaluate_transformer_caption(
         from PIL import Image
 
         # 1. Load the image using Pillow
-        img0 = Image.open('/content/RSICC/SECOND-CC-AUG/test/rgb/A/00015_0_0.png')
-        img1 = Image.open('/content/RSICC/SECOND-CC-AUG/test/rgb/B/00015_0_0.png')
+        # 1. Load the image using Pillow
+        if args.img_a and args.img_b:
+            img0 = Image.open(args.img_a).convert('RGB')
+            img1 = Image.open(args.img_b).convert('RGB')
+        else:
+            # Eğer parametre gelmezse hata vermemesi için eski usul veya bir hata mesajı
+            print("Hata: Resim yolları belirtilmedi!")
 
         # 2. Define the transform to Tensor
         transform = transforms.Compose([
@@ -1385,8 +1378,6 @@ def evaluate_transformer_caption(
         imgs_A = img_pairs[:, 0, :, :, :]
         imgs_B = img_pairs[:, 1, :, :, :]
 
-
-
         if(args.dual_branch == True ):
             b, t, c, h, w = img_pairs.shape
             imgs_full = img_pairs.view(-1, c, h, w) 
@@ -1406,10 +1397,9 @@ def evaluate_transformer_caption(
             resnet_B = encoder_image(imgs_B_resnet)
 
             resnet_A_normed, clip_A_normed = layerNormalizeLayer(resnet_A, clip_out_A)
-            resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B, clip_out_B)     
-            
+            resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B, clip_out_B)          
 
-            final_A, final_B = adaptLayer(resnet_A_normed, resnet_B_normed, clip_A_normed, clip_B_normed)
+            final_A, final_B = adaptLayer(resnet_A_normed, clip_A_normed,resnet_B_normed, clip_B_normed)
 
             # train fonksiyonu içinde (satır 194 civarı)
             # Girdi: [Batch, 512, 14, 14]
@@ -1433,11 +1423,10 @@ def evaluate_transformer_caption(
                 # 3. Tekrar [Batch, 512, 14, 14] formatına dönün (Concat için gerekli)
                 resnet_B_adapt = resnet_B_att.view(b, h, w, c).permute(0, 3, 1, 2)
 
-            encoder_out = encoder_feat(
+            fused_feat = encoder_feat(
                 final_A,
                 final_B,
-            ) 
-            # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
+            ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
         elif(args.fusedclip):
             b, t, c, h, w = img_pairs.shape
             imgs_full = img_pairs.view(-1, c, h, w) 
@@ -1463,7 +1452,7 @@ def evaluate_transformer_caption(
             final_A = torch.cat([resnet_A_normed, clip_A_normed], dim=1)
             final_B = torch.cat([resnet_B_normed, clip_B_normed], dim=1)
 
-            encoder_out = encoder_feat(
+            fused_feat = encoder_feat(
                 resnet_A,
                 resnet_B,
             ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
@@ -1471,7 +1460,7 @@ def evaluate_transformer_caption(
             clip_out =  torch.cat([clip_out_A, clip_out_B], dim=1)
             clip_out =  clip_out.permute(1,2,0)
 
-            encoder_out = torch.cat([encoder_out, clip_out], dim=1)
+            fused_feat = torch.cat([fused_feat, clip_out], dim=1)
             
         else:
             b, t, c, h, w = img_pairs.shape
@@ -1485,7 +1474,7 @@ def evaluate_transformer_caption(
             clip_out_A = adaptLayerClip(clip_out_A)
             clip_out_B = adaptLayerClip(clip_out_B)
 
-            encoder_out = encoder_feat(
+            fused_feat = encoder_feat(
                 clip_out_A,
                 clip_out_B,
             ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
@@ -1693,6 +1682,10 @@ if __name__ == "__main__":
     parser.add_argument("--grad_clip", type=float, default=5.0, help="clip gradients at an absolute value of.")
     parser.add_argument("--fine_tune_encoder", type=bool, default=True, help="whether fine-tune encoder or not")
     parser.add_argument("--checkpoint", default="None", help="path to checkpoint, None if none.")
+
+    
+    parser.add_argument('--img_a', type=str, default=None, help='İlk resmin yolu')
+    parser.add_argument('--img_b', type=str, default=None, help='İkinci resmin yolu')
     
     # Validation
     parser.add_argument("--Split", default="VAL", help="which")

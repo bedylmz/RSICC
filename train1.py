@@ -1309,8 +1309,12 @@ def evaluate_transformer_caption(
         from PIL import Image
 
         # 1. Load the image using Pillow
-        img0 = Image.open('/content/RSICC/SECOND-CC-AUG/test/rgb/A/00011_0_0.png')
-        img1 = Image.open('/content/RSICC/SECOND-CC-AUG/test/rgb/B/00011_0_0.png')
+        if args.img_a and args.img_b:
+            img0 = Image.open(args.img_a).convert('RGB')
+            img1 = Image.open(args.img_b).convert('RGB')
+        else:
+            # Eğer parametre gelmezse hata vermemesi için eski usul veya bir hata mesajı
+            print("Hata: Resim yolları belirtilmedi!")
 
         # 2. Define the transform to Tensor
         transform = transforms.Compose([
@@ -1621,6 +1625,9 @@ if __name__ == "__main__":
     parser.add_argument("--grad_clip", type=float, default=5.0, help="clip gradients at an absolute value of.")
     parser.add_argument("--fine_tune_encoder", type=bool, default=True, help="whether fine-tune encoder or not")
     parser.add_argument("--checkpoint", default="None", help="path to checkpoint, None if none.")
+
+    parser.add_argument('--img_a', type=str, default=None, help='İlk resmin yolu')
+    parser.add_argument('--img_b', type=str, default=None, help='İkinci resmin yolu')
     
     # Validation
     parser.add_argument("--Split", default="VAL", help="which")

@@ -478,8 +478,12 @@ def evaluate_transformer_caption(
         from PIL import Image
 
         # 1. Load the image using Pillow
-        img0 = Image.open('/content/RSICC/SECOND-CC-AUG/test/rgb/A/00011_0_0.png')
-        img1 = Image.open('/content/RSICC/SECOND-CC-AUG/test/rgb/B/00011_0_0.png')
+        if args.img_a and args.img_b:
+            img0 = Image.open(args.img_a).convert('RGB')
+            img1 = Image.open(args.img_b).convert('RGB')
+        else:
+            # Eğer parametre gelmezse hata vermemesi için eski usul veya bir hata mesajı
+            print("Hata: Resim yolları belirtilmedi!")
 
         # 2. Define the transform to Tensor
         transform = transforms.Compose([
@@ -777,6 +781,10 @@ if __name__ == "__main__":
 
     #params for text encoder
     parser.add_argument("--clip_text_encoder", action='store_true')
+
+    
+    parser.add_argument('--img_a', type=str, default=None, help='İlk resmin yolu')
+    parser.add_argument('--img_b', type=str, default=None, help='İkinci resmin yolu')
 
     # Training parameters
     parser.add_argument("--epochs", type=int, default=40, help="number of epochs to train for (if early stopping is not triggered).")
