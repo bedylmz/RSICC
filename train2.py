@@ -278,211 +278,6 @@ class GatedSelfAttention(nn.Module):
         
         return output, attention
 
-def train(
-    args= None,
-    train_loader= None,
-    clip_encoder_image= None,
-    encoder_feat= None,
-    decoder= None,
-    criterion= None,
-    encoder_image_optimizer= None,
-    encoder_feat_optimizer= None,
-    encoder_feat_lr_scheduler= None,
-    decoder_optimizer= None,
-    decoder_lr_scheduler= None,
-    epoch= None,
-    
-    encoder_image = None,
-    clip_encoder_optimizer = None,
-    layerNormalizeLayer = None,
-    adaptLayer = None,
-    adaptLayerClip = None,
-    encoder_image_lr_scheduler = None,
-    gateSelf = None,
-
-):
-    """
-    Performs one epoch's training.
-
-    :param train_loader: DataLoader for training data
-    :param encoder: encoder model
-    :param decoder: decoder model
-    :param criterion: loss layer
-    :param encoder_optimizer: optimizer to update encoder's weights (if fine-tuning)
-    :param decoder_optimizer: optimizer to update decoder's weights
-    :param epoch: epoch number
-    """
-
-    if(args.dual_branch ==True):
-        encoder_image.train()
-        adaptLayer.train()
-        layerNormalizeLayer.train()
-        if(args.gate ==True):
-            gateSelf.train()
-    else:
-        adaptLayerClip.train()
-
-
-    clip_encoder_image.eval()
-    encoder_feat.train()
-    decoder.train()  # train mode (dropout and batchnorm is used)
-
-    batch_time = AverageMeter()  # forward prop. + back prop. time
-    data_time = AverageMeter()  # data loading time
-    losses = AverageMeter()  # loss (per word decoded)
-    top5accs = AverageMeter()  # top5 accuracy
-
-    start = time.time()
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    # ResNet İstatistikleri
-    norm_resnet = BatchNormalize(mean=[0.485, 0.456, 0.406], 
-                                 std=[0.229, 0.224, 0.225], 
-                                 device=device)
-    
-    # CLIP İstatistikleri
-    norm_clip = BatchNormalize(mean=[0.48145466, 0.4578275, 0.40821073], 
-                               std=[0.26862954, 0.26130258, 0.27577711], 
-                               device=device)
-    # -----------------------------------------------
-
-    for i, (img_pairs, caps, caplens) in enumerate(train_loader):
-
-        data_time.update(time.time() - start)
-
-        # Back prop.
-        decoder_optimizer.zero_grad()
-        encoder_feat_optimizer.zero_grad()
-
-        if(args.dual_branch == True):
-            encoder_image_optimizer.zero_grad()
-
-        # Move to GPU, if available
-        img_pairs = img_pairs.to(device)
-        caps = caps.to(device)
-        caplens = caplens.to(device)
-
-        # Forward prop.
-        imgs_A = img_pairs[:, 0, :, :, :]
-        imgs_B = img_pairs[:, 1, :, :, :]
-
-        
-        if(args.dual_branch == True ):
-            b, t, c, h, w = img_pairs.shape
-            imgs_full = img_pairs.view(-1, c, h, w) 
-            imgs_full_clip = norm_clip(imgs_full) # CLIP için normalize et
-
-            # 2. Pass the flattened pairs and set frames to 2
-            # Note: Remove parentheses from .shape (it is a property, not a function)
-            clip_out = clip_encoder_image(imgs_full_clip, 2)
-            clip_out_A = clip_out[:,0,:] # 768 100 b
-            clip_out_B = clip_out[:,50,:]
-
-            imgs_A_resnet = norm_resnet(imgs_A) # ResNet için normalize et
-            imgs_B_resnet = norm_resnet(imgs_B)
-            
-            resnet_A = encoder_image(imgs_A_resnet)
-            resnet_B = encoder_image(imgs_B_resnet)
-            
-
-            resnet_A_adapt, clip_A_adapt = adaptLayer(resnet_A, clip_out_A)
-            resnet_B_adapt, clip_B_adapt = adaptLayer(resnet_B, clip_out_B)
-
-
-            resnet_A_normed, clip_A_normed = layerNormalizeLayer(resnet_A_adapt, clip_A_adapt)
-            resnet_B_normed, clip_B_normed = layerNormalizeLayer(resnet_B_adapt, clip_B_adapt)
-
-            # train fonksiyonu içinde (satır 194 civarı)
-            # Girdi: [Batch, 512, 14, 14]
-            if(args.gate ==True):
-                # 1. Kanalı sona alıp düzleştirin: [Batch, 196, 512]
-                b, c, h, w = resnet_A_normed.shape
-                resnet_A_flat = resnet_A_normed.permute(0, 2, 3, 1).view(b, h*w, c) 
-
-                # 2. Attention uygulayın (Çıktı yine [Batch, 196, 512] olacak)
-                resnet_A_att, _ = gateSelf(resnet_A_flat)
-
-                # 3. Tekrar [Batch, 512, 14, 14] formatına dönün (Concat için gerekli)
-                resnet_A_normed = resnet_A_att.view(b, h, w, c).permute(0, 3, 1, 2)
-
-                b, c, h, w = resnet_B_normed.shape
-                resnet_B_flat = resnet_B_normed.permute(0, 2, 3, 1).view(b, h*w, c) 
-
-                # 2. Attention uygulayın (Çıktı yine [Batch, 196, 512] olacak)
-                resnet_B_att, _ = gateSelf(resnet_B_flat)
-
-                # 3. Tekrar [Batch, 512, 14, 14] formatına dönün (Concat için gerekli)
-                resnet_B_normed = resnet_B_att.view(b, h, w, c).permute(0, 3, 1, 2)
-
-            final_A = torch.cat([resnet_A_normed, clip_A_normed], dim=1)
-            final_B = torch.cat([resnet_B_normed, clip_B_normed], dim=1)
-
-            fused_feat = encoder_feat(
-                final_A,
-                final_B,
-            ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
-        else:
-            b, t, c, h, w = img_pairs.shape
-            imgs_full = img_pairs.view(-1, c, h, w) 
-            imgs_full_clip = norm_clip(imgs_full)
-            # 2. Pass the flattened pairs and set frames to 2
-            # Note: Remove parentheses from .shape (it is a property, not a function)
-            clip_out = clip_encoder_image(imgs_full_clip, 2)
-            clip_out_A = clip_out[:,0,:] # 768 100 b
-            clip_out_B = clip_out[:,50,:]
-            clip_out_A = adaptLayerClip(clip_out_A)
-            clip_out_B = adaptLayerClip(clip_out_B)
-
-            fused_feat = encoder_feat(
-                clip_out_A,
-                clip_out_B,
-            ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
-
-        scores, caps_sorted, decode_lengths, sort_ind = decoder(fused_feat, caps, caplens)
-
-        # Since we decoded starting with <start>, the targets are all words after <start>, up to <end>
-        targets = caps_sorted[:, 1:]
-
-        # Remove timesteps that we didn't decode at, or are pads
-        # pack_padded_sequence is an easy trick to do this
-        scores = pack_padded_sequence(scores, decode_lengths, batch_first=True).data
-        targets = pack_padded_sequence(targets, decode_lengths, batch_first=True).data
-
-        # Calculate loss
-        loss = criterion(scores, targets)
-
-        loss.backward()
-
-        # Update weights
-        decoder_optimizer.step()
-        decoder_lr_scheduler.step()
-        
-        encoder_feat_optimizer.step()
-        encoder_feat_lr_scheduler.step()
-
-        # Keep track of metrics
-        top5 = accuracy(scores, targets, 1)
-        losses.update(loss.item(), sum(decode_lengths))
-        top5accs.update(top5, sum(decode_lengths))
-        batch_time.update(time.time() - start)
-
-        start = time.time()
-        if i % args.print_freq == 0:
-            # print('TIME: ', time.strftime("%m-%d  %H : %M : %S", time.localtime(time.time())))
-            print(
-                "Epoch: {}/{} step: {}/{} Loss: {} AVG_Loss: {} Top-5 Accuracy: {} Batch_time: {}s".format(
-                    epoch + 0,
-                    args.epochs,
-                    i + 0,
-                    len(train_loader),
-                    losses.val,
-                    losses.avg,
-                    top5accs.val,
-                    batch_time.val,
-                )
-            )
-
 def key_transformation(old_key):
     if old_key == "layer.0.weight":
         return "layer.1.weight"
@@ -1433,10 +1228,10 @@ def evaluate_transformer_caption(
                 # 3. Tekrar [Batch, 512, 14, 14] formatına dönün (Concat için gerekli)
                 resnet_B_adapt = resnet_B_att.view(b, h, w, c).permute(0, 3, 1, 2)
 
-            fused_feat = encoder_feat(
+            encoder_out = encoder_feat(
                 final_A,
                 final_B,
-            ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
+            ) # encoder_out: (S, batch, feature_dim) # encoder_out: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
         elif(args.fusedclip):
             b, t, c, h, w = img_pairs.shape
             imgs_full = img_pairs.view(-1, c, h, w) 
@@ -1462,15 +1257,15 @@ def evaluate_transformer_caption(
             final_A = torch.cat([resnet_A_normed, clip_A_normed], dim=1)
             final_B = torch.cat([resnet_B_normed, clip_B_normed], dim=1)
 
-            fused_feat = encoder_feat(
+            encoder_out = encoder_feat(
                 resnet_A,
                 resnet_B,
-            ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
+            ) # encoder_out: (S, batch, feature_dim) # encoder_out: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
 
             clip_out =  torch.cat([clip_out_A, clip_out_B], dim=1)
             clip_out =  clip_out.permute(1,2,0)
 
-            fused_feat = torch.cat([fused_feat, clip_out], dim=1)
+            encoder_out = torch.cat([encoder_out, clip_out], dim=1)
             
         else:
             b, t, c, h, w = img_pairs.shape
@@ -1484,10 +1279,10 @@ def evaluate_transformer_caption(
             clip_out_A = adaptLayerClip(clip_out_A)
             clip_out_B = adaptLayerClip(clip_out_B)
 
-            fused_feat = encoder_feat(
+            encoder_out = encoder_feat(
                 clip_out_A,
                 clip_out_B,
-            ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
+            ) # encoder_out: (S, batch, feature_dim) # encoder_out: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
 
         tgt = torch.zeros(52, k).to(device).to(torch.int64)
         tgt_length = tgt.size(0)
