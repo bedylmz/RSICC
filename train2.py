@@ -172,6 +172,8 @@ class AdaptLayer(nn.Module):
         final_before = torch.cat([resnet_feat_before, clip_feat_before], dim=1)
         final_after = torch.cat([resnet_feat_after, clip_feat_after], dim=1)
 
+        import torch.nn.functional as F
+
         final_before = F.normalize(final_before, p=2, dim=1)
         final_after = F.normalize(final_after, p=2, dim=1)
 
