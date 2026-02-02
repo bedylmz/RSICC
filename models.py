@@ -317,7 +317,13 @@ class MCCFormers_diff_as_Q(nn.Module):
                 key=output2_list[i],    # Zaman 2
                 value=output2_list[i]
             )
+            fused_feat = fused_feat.permute(1, 2, 0).unsqueeze(-1)
+
+            # 2. Conv2d işlemini uygula (Kanal sayısı 512 -> 1024 olacak)
             fused_feat = self.projection_out(fused_feat)
+
+            # 3. Boyutları eski Transformer formatına geri döndür: (Batch, Dim, Seq, 1) -> (Seq, Batch, Dim)
+            fused_feat = fused_feat.squeeze(-1).permute(2, 0, 1)
             fused_feat = fused_feat.permute(1, 2, 0)
             fused_feat = fused_feat.view(batch, 1024, 14, 14)
             output = output + fused_feat # Residual ekleme
