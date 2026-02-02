@@ -200,7 +200,7 @@ class MCCFormers_diff_as_Q(nn.Module):
         self.embedding_1D = nn.Embedding(h*w, int(d_model))
 
         self.projection = nn.Conv2d(feature_dim, d_model, kernel_size=1)
-        self.projection_768 = nn.Conv2d(feature_dim, 768, kernel_size=1)
+        self.projection_clip = nn.Linear(768, 512)
 
         self.projection2 = nn.Conv2d(768, d_model, kernel_size=1)
         self.projection3 = nn.Conv2d(512, d_model, kernel_size=1)
@@ -215,10 +215,10 @@ class MCCFormers_diff_as_Q(nn.Module):
         self._reset_parameters()
 
         self.cross_attn = nn.MultiheadAttention(
-            embed_dim=768,  # QUERY'nin boyutu (Çıktı da bu boyutta olacak)
+            embed_dim=512,  # QUERY'nin boyutu (Çıktı da bu boyutta olacak)
             num_heads=4,            # Kafa sayısı
-            kdim=768,        # KEY'in boyutu (CLIP boyutu)
-            vdim=768,        # VALUE'nun boyutu (CLIP boyutu)
+            kdim=512,        # KEY'in boyutu (CLIP boyutu)
+            vdim=512,        # VALUE'nun boyutu (CLIP boyutu)
             batch_first=True      # Girdilerin (Batch, Seq, Dim) formatındaysa şart!
         )
         
@@ -247,17 +247,6 @@ class MCCFormers_diff_as_Q(nn.Module):
         img_feat2 = self.projection_768(img_feat2)
         feature_dim = img_feat1.size(1)
 
-        img_feat1, weights = self.cross_attn(
-            query=img_feat1, 
-            key=clip_A, 
-            value=clip_A,
-        )
-
-        img_feat2, weights = self.cross_attn(
-            query=img_feat2, 
-            key=clip_B, 
-            value=clip_B,
-        )
 
         if feature_dim == 1024:
             img_feat1 = self.projection(img_feat1)  
@@ -290,6 +279,21 @@ class MCCFormers_diff_as_Q(nn.Module):
 
         encoder_output1 = img_feat1.view(batch, self.d_model, -1).permute(2, 0, 1)  # (h*w, batch_size, d_model)
         encoder_output2 = img_feat2.view(batch, self.d_model, -1).permute(2, 0, 1)  # (h*w, batch_size, d_model)
+
+        clip_A = self.projection_clip(clip_A)
+        clip_B = self.projection_clip(clip_B)
+        
+        encoder_output1, weights = self.cross_attn(
+            query=encoder_output1, 
+            key=clip_A, 
+            value=clip_A,
+        )
+
+        encoder_output2, weights = self.cross_attn(
+            query=encoder_output2, 
+            key=clip_B, 
+            value=clip_B,
+        )
 
         output1 = encoder_output1
         output2 = encoder_output2
