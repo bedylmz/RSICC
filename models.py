@@ -309,8 +309,7 @@ class MCCFormers_diff_as_Q(nn.Module):
             output2_list.append(output2)
 
 
-
-        output = torch.zeros((batch, 14, 14, 1024)).to(device)
+        output = torch.zeros((196,batch,self.d_model*2)).to(device)
         for i in range(self.n_layers):
             fused_feat, _ = self.cross_attn_diff(
                 query=output1_list[i],  # Zaman 1
@@ -324,9 +323,7 @@ class MCCFormers_diff_as_Q(nn.Module):
 
             # 3. Boyutları eski Transformer formatına geri döndür: (Batch, Dim, Seq, 1) -> (Seq, Batch, Dim)
             fused_feat = fused_feat.squeeze(-1).permute(2, 0, 1)
-            fused_feat = fused_feat.permute(1, 2, 0)
-            fused_feat = fused_feat.view(batch, 1024, 14, 14)
-            fused_feat = fused_feat.permute(0, 2, 3, 1)
+
             output = output + fused_feat # Residualekleme
             output = self.LN[i](output)
 
