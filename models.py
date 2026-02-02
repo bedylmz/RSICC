@@ -201,6 +201,7 @@ class MCCFormers_diff_as_Q(nn.Module):
 
         self.projection = nn.Conv2d(feature_dim, d_model, kernel_size=1)
         self.projection_clip = nn.Linear(768, 512)
+        self.projection_out = nn.Conv2d(d_model, feature_dim, kernel_size=1)
 
         self.projection2 = nn.Conv2d(768, d_model, kernel_size=1)
         self.projection3 = nn.Conv2d(512, d_model, kernel_size=1)
@@ -208,7 +209,7 @@ class MCCFormers_diff_as_Q(nn.Module):
 
         self.transformer = nn.ModuleList([CrossTransformer(dropout, d_model, n_head) for i in range(n_layers)])
 
-        self.resblock = nn.ModuleList([resblock(d_model*2, d_model*2) for i in range(n_layers)])
+        # self.resblock = nn.ModuleList([resblock(d_model*2, d_model*2) for i in range(n_layers)])
 
         self.LN = nn.ModuleList([nn.LayerNorm(d_model*2) for i in range(n_layers)])
 
@@ -309,13 +310,16 @@ class MCCFormers_diff_as_Q(nn.Module):
 
 
 
-        output = torch.zeros((196,batch,self.d_model)).to(device)
+        output = torch.zeros((batch, 1024, 14, 14)).to(device)
         for i in range(self.n_layers):
             fused_feat, _ = self.cross_attn_diff(
                 query=output1_list[i],  # Zaman 1
                 key=output2_list[i],    # Zaman 2
                 value=output2_list[i]
             )
+            fused_feat = self.projection_out(fused_feat)
+            fused_feat = fused_feat.permute(1, 2, 0)
+            fused_feat = fused_feat.view(batch, 1024, 14, 14)
             output = output + fused_feat # Residual ekleme
             output = self.LN[i](output)
 
