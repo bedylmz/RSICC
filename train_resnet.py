@@ -19,7 +19,7 @@ from classes import *
 from models import MCCFormers_diff_as_Q, DecoderTransformer, CNN_Encoder
 from datasets import CaptionDataset
 from utils import AverageMeter, adjust_learning_rate, bridge_embeddings_and_transfer, accuracy
-from eval import evaluate_transformer
+from eval_resnet import evaluate_transformer
 
 from CLIP_modules.modeling import CLIP4IDC
 from CLIP_modules.file_utils import PYTORCH_PRETRAINED_BERT_CACHE
@@ -141,7 +141,8 @@ def train(
             fused_feat = encoder_feat(
                 resnet_A,
                 resnet_B,
-                
+                clip_out_A,
+                clip_out_B,
             ) # encoder_out: (S, batch, feature_dim) # fused_feat: (S, batch, feature_dim) # buyuk tensor atama yavaslatior (#batch time = 0.5)
         
         scores, caps_sorted, decode_lengths, sort_ind = decoder(fused_feat, caps, caplens)
