@@ -310,7 +310,7 @@ class MCCFormers_diff_as_Q(nn.Module):
 
 
 
-        output = torch.zeros((batch, 1024, 14, 14)).to(device)
+        output = torch.zeros((batch, 14, 14, 1024)).to(device)
         for i in range(self.n_layers):
             fused_feat, _ = self.cross_attn_diff(
                 query=output1_list[i],  # Zaman 1
@@ -326,7 +326,8 @@ class MCCFormers_diff_as_Q(nn.Module):
             fused_feat = fused_feat.squeeze(-1).permute(2, 0, 1)
             fused_feat = fused_feat.permute(1, 2, 0)
             fused_feat = fused_feat.view(batch, 1024, 14, 14)
-            output = output + fused_feat # Residual ekleme
+            fused_feat = fused_feat.permute(0, 2, 3, 1)
+            output = output + fused_feat # Residualekleme
             output = self.LN[i](output)
 
 
