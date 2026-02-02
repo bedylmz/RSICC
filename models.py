@@ -275,6 +275,9 @@ class MCCFormers_diff_as_Q(nn.Module):
         encoder_output1 = img_feat1.view(batch, self.d_model, -1).permute(2, 0, 1)  # (h*w, batch_size, d_model)
         encoder_output2 = img_feat2.view(batch, self.d_model, -1).permute(2, 0, 1)  # (h*w, batch_size, d_model)
 
+        encoder_output1 = encoder_output1.permute(1, 0, 2)
+        encoder_output2 = encoder_output2.permute(1, 0, 2)
+
         clip_A = self.projection_clip(clip_A)
         clip_B = self.projection_clip(clip_B)
         
@@ -289,6 +292,10 @@ class MCCFormers_diff_as_Q(nn.Module):
             key=clip_B, 
             value=clip_B,
         )
+
+        encoder_output1 = encoder_output1.permute(1, 0, 2)
+        encoder_output2 = encoder_output2.permute(1, 0, 2)
+
 
         output1 = encoder_output1
         output2 = encoder_output2
