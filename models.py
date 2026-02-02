@@ -307,7 +307,9 @@ class MCCFormers_diff_as_Q(nn.Module):
             output1_list.append(output1)
             output2_list.append(output2)
 
-        
+
+
+        output = torch.zeros((196,batch,self.d_model)).to(device)
         for i in range(self.n_layers):
             fused_feat, _ = self.cross_attn_diff(
                 query=output1_list[i],  # Zaman 1
