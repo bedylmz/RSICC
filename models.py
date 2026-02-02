@@ -200,6 +200,8 @@ class MCCFormers_diff_as_Q(nn.Module):
         self.embedding_1D = nn.Embedding(h*w, int(d_model))
 
         self.projection = nn.Conv2d(feature_dim, d_model, kernel_size=1)
+        self.projection_768 = nn.Conv2d(feature_dim, 768, kernel_size=1)
+
         self.projection2 = nn.Conv2d(768, d_model, kernel_size=1)
         self.projection3 = nn.Conv2d(512, d_model, kernel_size=1)
         self.projection4 = nn.Conv2d(256, d_model, kernel_size=1)
@@ -212,17 +214,50 @@ class MCCFormers_diff_as_Q(nn.Module):
 
         self._reset_parameters()
 
+        self.cross_attn = nn.MultiheadAttention(
+            embed_dim=768,  # QUERY'nin boyutu (Çıktı da bu boyutta olacak)
+            num_heads=4,            # Kafa sayısı
+            kdim=768,        # KEY'in boyutu (CLIP boyutu)
+            vdim=768,        # VALUE'nun boyutu (CLIP boyutu)
+            batch_first=True      # Girdilerin (Batch, Seq, Dim) formatındaysa şart!
+        )
+        
+        self.cross_attn_diff = nn.MultiheadAttention(
+            embed_dim= 512,  # QUERY'nin boyutu (Çıktı da bu boyutta olacak)
+            num_heads=4,            # Kafa sayısı
+            kdim= 512,        # KEY'in boyutu (CLIP boyutu)
+            vdim= 512,        # VALUE'nun boyutu (CLIP boyutu)
+            batch_first=True      # Girdilerin (Batch, Seq, Dim) formatındaysa şart!
+        )
+
+
     def _reset_parameters(self):
         """Initiate parameters in the transformer model."""
         for p in self.parameters():
             if p.dim() > 1:
                 xavier_uniform_(p)
 
-    def forward(self, img_feat1, img_feat2):
+    def forward(self, img_feat1, img_feat2, clip_A, clip_B):
         # img_feat1 (batch_size, feature_dim, h, w)
         batch = img_feat1.size(0)
         feature_dim = img_feat1.size(1)
         w, h = img_feat1.size(2), img_feat1.size(3)
+
+        img_feat1 = self.projection_768(img_feat1)
+        img_feat2 = self.projection_768(img_feat2)
+        feature_dim = img_feat1.size(1)
+
+        img_feat1, weights = self.cross_attn(
+            query=img_feat1, 
+            key=clip_A, 
+            value=clip_A,
+        )
+
+        img_feat2, weights = self.cross_attn(
+            query=img_feat2, 
+            key=clip_B, 
+            value=clip_B,
+        )
 
         if feature_dim == 1024:
             img_feat1 = self.projection(img_feat1)  
@@ -237,6 +272,7 @@ class MCCFormers_diff_as_Q(nn.Module):
             img_feat1 = self.projection4(img_feat1)  
             img_feat2 = self.projection4(img_feat2)  
 
+        
         pos_w = torch.arange(w, device=device).to(device)
         pos_h = torch.arange(h, device=device).to(device)
         embed_w = self.w_embedding(pos_w)
@@ -265,17 +301,28 @@ class MCCFormers_diff_as_Q(nn.Module):
             output1_list.append(output1)
             output2_list.append(output2)
 
-        # MBF
-        i = 0
-        output = torch.zeros((196,batch,self.d_model*2)).to(device)
-        for res in self.resblock:
-            input = torch.cat([output1_list[i],output2_list[i]],dim=-1)
-            output = output + input
-            output = output.permute(1, 2, 0).view(batch, self.d_model*2, 14, 14)
-            output = res(output)
-            output = output.view(batch, self.d_model*2,-1).permute(2, 0, 1)
+        
+        for i in range(self.n_layers):
+            fused_feat, _ = self.cross_attn_diff(
+                query=output1_list[i],  # Zaman 1
+                key=output2_list[i],    # Zaman 2
+                value=output2_list[i]
+            )
+            output = output + fused_feat # Residual ekleme
             output = self.LN[i](output)
-            i=i+1
+
+
+        # # MBF
+        # i = 0
+        # output = torch.zeros((196,batch,self.d_model*2)).to(device)
+        # for res in self.resblock:
+        #     input = torch.cat([output1_list[i],output2_list[i]],dim=-1)
+        #     output = output + input
+        #     output = output.permute(1, 2, 0).view(batch, self.d_model*2, 14, 14)
+        #     output = res(output)
+        #     output = output.view(batch, self.d_model*2,-1).permute(2, 0, 1)
+        #     output = self.LN[i](output)
+        #     i=i+1
 
         return output
 
@@ -471,3 +518,5 @@ class DecoderTransformer(nn.Module):
         decode_lengths = (caption_lengths - 1).tolist()
 
         return pred, encoded_captions, decode_lengths, sort_ind
+
+
