@@ -243,11 +243,6 @@ class MCCFormers_diff_as_Q(nn.Module):
         feature_dim = img_feat1.size(1)
         w, h = img_feat1.size(2), img_feat1.size(3)
 
-        img_feat1 = self.projection_768(img_feat1)
-        img_feat2 = self.projection_768(img_feat2)
-        feature_dim = img_feat1.size(1)
-
-
         if feature_dim == 1024:
             img_feat1 = self.projection(img_feat1)  
             img_feat2 = self.projection(img_feat2)  
